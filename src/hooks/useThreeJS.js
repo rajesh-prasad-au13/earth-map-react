@@ -16,6 +16,12 @@ export function useThreeJS(containerRef) {
   const [hoveredCountry, setHoveredCountry] = useState(null);
   const [isAnimating, setIsAnimating] = useState(false);
 
+  // State for camera movement (local state)
+  const [isCameraMoving, setIsCameraMoving] = useState(false);
+
+  // Use showFlags from context instead of local state
+  const showFlags = state.countries.showFlags;
+
   // Add a ref to track auto-animation state more reliably
   const isAutoAnimatingRef = useRef(false);
 
@@ -27,17 +33,15 @@ export function useThreeJS(containerRef) {
   const raycasterRef = useRef(new THREE.Raycaster());
   const mouseRef = useRef(new THREE.Vector2());
   const countryBordersRef = useRef(null);
-  const earthMeshRef = useRef(null);
   const cloudsMeshRef = useRef(null);
   const activeBorderOutlineRef = useRef(null);
   const flagLoadingTimeoutRef = useRef(null);
   const globeRef = useRef(null); // For three-globe instance
 
-  // Animation constants from centralized state
-  const INITIAL_ZOOM_DISTANCE = state.INITIAL_ZOOM_DISTANCE / 70; // Scale down for our scene
-  const COUNTRY_TO_COUNTRY_ZOOM_DISTANCE =
-    state.COUNTRY_TO_COUNTRY_ZOOM_DISTANCE / 70;
-  const COUNTRY_VIEW_ZOOM_DISTANCE = state.COUNTRY_VIEW_ZOOM_DISTANCE / 70;
+  // Animation constants from centralized state (adjusted for three-globe radius 100)
+  const INITIAL_ZOOM_DISTANCE = state.INITIAL_ZOOM_DISTANCE; // Use original values for three-globe
+  const COUNTRY_TO_COUNTRY_ZOOM_DISTANCE = state.COUNTRY_TO_COUNTRY_ZOOM_DISTANCE;
+  const COUNTRY_VIEW_ZOOM_DISTANCE = state.COUNTRY_VIEW_ZOOM_DISTANCE;
 
   // --- Helper function to convert lat/lon to 3D position ---
   const latLonToVector3 = (lat, lon, radius) => {
@@ -109,7 +113,7 @@ export function useThreeJS(containerRef) {
       75,
       window.innerWidth / window.innerHeight,
       0.1,
-      1000
+      10000 // Increased far plane for larger three-globe (radius 100)
     );
 
     if (state && state.camera && state.camera.position) {
@@ -119,7 +123,7 @@ export function useThreeJS(containerRef) {
         state.camera.position.z
       );
     } else {
-      camera.position.z = 5; // Default camera position
+      camera.position.z = INITIAL_ZOOM_DISTANCE; // Default camera position for three-globe
     }
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -138,9 +142,23 @@ export function useThreeJS(containerRef) {
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
     controls.screenSpacePanning = false;
-    controls.minDistance = 2.5; // Min zoom
-    controls.maxDistance = 10; // Max zoom
+    controls.minDistance = 110; // Min zoom for three-globe (radius 100 + 10)
+    controls.maxDistance = 500; // Max zoom for three-globe
     controls.enablePan = true; // Allow panning
+
+    // Add camera movement tracking for flag effects
+    controls.addEventListener("start", () => {
+      setIsCameraMoving(true);
+      console.log("[Camera] Movement started, hiding flags");
+    });
+
+    controls.addEventListener("end", () => {
+      // Delay to ensure camera has stopped
+      setTimeout(() => {
+        setIsCameraMoving(false);
+        console.log("[Camera] Movement ended, flags can be shown");
+      }, 500);
+    });
 
     // --- Lighting ---
     // Main directional light that will follow the camera (like the sun)
@@ -162,71 +180,73 @@ export function useThreeJS(containerRef) {
     const ambientLight = new THREE.AmbientLight(0x404040, 0.2); // Reduced ambient for more contrast
     scene.add(ambientLight);
 
-    // --- Earth Globe ---
-    const textureLoader = new THREE.TextureLoader();
-    const earthGeometry = new THREE.SphereGeometry(2, 64, 64); // Increased segments for smoother sphere
-
-    const earthMaterial = new THREE.MeshPhongMaterial({
-      map: textureLoader.load("/Albedo.jpg"), // Base color texture
-      // bumpMap: textureLoader.load("/Bump.jpg"), // Bump texture for surface details
-      bumpScale: 0.05, // Adjust bump intensity
-      specularMap: textureLoader.load("/Ocean.png"), // Specular map for water highlights
-      specular: new THREE.Color("grey"), // Adjust specular color if needed
-      shininess: 10, // Adjust shininess
-      // emissiveMap: textureLoader.load("/night_lights_modified.png"), // Night lights
-      // emissive: new THREE.Color(0xffffff), // Make emissive map visible
-      // emissiveIntensity: 0.8, // Adjust intensity of night lights
-    });
-
-    // Create the Earth mesh
-    const earthMesh = new THREE.Mesh(earthGeometry, earthMaterial);
-    scene.add(earthMesh);
-
-    // --- Three-Globe Setup for Flag Polygons ---
-    // Create a new ThreeGlobe instance
+    // --- Three-Globe Setup (Primary Earth) ---
+    // Create a new ThreeGlobe instance as our main Earth
     const globe = new ThreeGlobe();
-
-    // Configure the globe properties individually
-    globe.globeImageUrl("/Albedo.jpg");
-    globe.showGlobe(false); // Don't show the globe since we have our own earth mesh
+    
+    // Configure the globe to be our primary Earth (matching reference implementation)
+    globe.globeImageUrl("/Albedo.jpg"); // Earth texture
+    globe.bumpImageUrl("/Bump.jpg"); // Bump map for terrain  
+    globe.showAtmosphere(true); // Enable atmosphere
+    globe.atmosphereColor("#87ceeb"); // Light sky blue atmosphere
+    globe.atmosphereAltitude(0.15); // Atmosphere height
     globe.polygonsData([]);
 
     // Setup polygon materials using accessor functions that check for texture
     globe.polygonCapMaterial((d) => {
-      // If the polygon has a texture attached, use it
-      if (d.flagTexture) {
+      console.log(
+        `[DEBUG] polygonCapMaterial accessor called for:`,
+        d.countryName,
+        "has texture:",
+        !!d.flagTexture,
+        "isHighlighted:",
+        !!d.isHighlighted
+      );
+      // Only show flag if highlighted, has texture, camera is not moving, and flags are enabled
+      if (d.isHighlighted && d.flagTexture && !isCameraMoving && showFlags) {
+        console.log(
+          `[DEBUG] Creating material with flag texture for:`,
+          d.countryName
+        );
         return new THREE.MeshBasicMaterial({
           map: d.flagTexture,
           transparent: true,
-          opacity: 0.9,
+          opacity: 1.0,
           side: THREE.DoubleSide,
         });
       }
-      // Otherwise use a default green material
-      return new THREE.MeshBasicMaterial({
-        color: "#00ff00",
-        transparent: true,
-        opacity: 0.7,
-        side: THREE.DoubleSide,
-      });
+      // Return undefined to use default globe material (critical fix)
+      return undefined;
     });
 
     globe.polygonSideColor(() => "rgba(255,255,255,0.2)");
     globe.polygonStrokeColor(() => "rgba(255,255,255,0.3)");
 
+    // Enable polygon caps explicitly and ensure they're visible
+    globe.polygonCapColor(() => "#ffffff"); // Set a visible cap color as fallback
+    globe.polygonsTransitionDuration(0); // Disable transitions for immediate rendering
+
     // Use an accessor function for altitude to ensure it's applied per polygon
     globe.polygonAltitude((d) => {
-      return d.isHighlighted ? 0.00001 : 0; // Almost flush with the surface
+      console.log(`[DEBUG] Initial polygon altitude setup for country data`);
+      // Use small altitude values since globe has radius 100 by default
+      return 0.01; // Small positive altitude to ensure visibility above surface
     });
 
-    // Position the globe to match our earth mesh
-    globe.rotation.y = -Math.PI / 2; // Align the globe data with our earth mesh
-    globe.scale.set(2, 2, 2); // Match earth mesh radius
+    // Position the globe at center - no scaling needed since this IS our earth
+    globe.position.set(0, 0, 0);
     scene.add(globe);
 
-    console.log("[Three-Globe] Globe object added to scene:", globe);
+    console.log("[DEBUG] Three-globe position:", globe.position);
+    console.log("[DEBUG] Three-globe scale:", globe.scale);
+    console.log("[DEBUG] Three-globe default radius: 100");
+    console.log("[DEBUG] Three-globe rotation Y after setting:", globe.rotation.y);
 
-    // Store reference
+    // CRITICAL: Check three-globe's internal radius
+    console.log("[DEBUG] ThreeGlobe internal radius:", globe.getGlobeRadius());
+    console.log("[DEBUG] Three-globe default radius: 100");
+
+    // Store reference - we'll reapply transforms after polygon data changes
     globeRef.current = globe;
 
     // Store references for cleanup and later access
@@ -234,7 +254,7 @@ export function useThreeJS(containerRef) {
     cameraRef.current = camera;
     rendererRef.current = renderer;
     controlsRef.current = controls;
-    earthMeshRef.current = earthMesh;
+    globeRef.current = globe;
 
     // --- Mouse Event Handlers for Country Interaction ---
     const handleMouseMove = (event) => {
@@ -429,6 +449,7 @@ export function useThreeJS(containerRef) {
 
     // --- Clouds Layer ---
     const cloudGeometry = new THREE.SphereGeometry(2.05, 64, 64); // Slightly larger than Earth
+    const textureLoader = new THREE.TextureLoader();
     const cloudTexture = textureLoader.load("/Clouds.png");
     const cloudMaterial = new THREE.MeshPhongMaterial({
       map: cloudTexture,
@@ -684,15 +705,15 @@ export function useThreeJS(containerRef) {
       directionalLight.position.y += 0.5;
       directionalLight.position.normalize().multiplyScalar(lightOffset);
 
-      // Earth rotation - only if we're not auto-rotating with controls
-      if (earthMeshRef.current && !state.camera.autoRotate) {
+      // Globe rotation - only if we're not auto-rotating with controls
+      if (globeRef.current && !state.camera.autoRotate) {
         if (state.animation.isPlaying) {
-          earthMeshRef.current.rotation.y += 0.002;
+          globeRef.current.rotation.y += 0.002;
 
-          // Make country borders rotate with Earth
+          // Make country borders rotate with Globe
           if (countryBordersRef.current) {
             countryBordersRef.current.rotation.y =
-              earthMeshRef.current.rotation.y;
+              globeRef.current.rotation.y;
           }
         }
       }
@@ -754,18 +775,13 @@ export function useThreeJS(containerRef) {
       cameraRef.current = null;
       controlsRef.current = null;
 
-      // Dispose Earth materials and geometry
-      earthMaterial.dispose();
-      earthGeometry.dispose();
-      earthMaterial.map?.dispose();
-      earthMaterial.bumpMap?.dispose();
-      earthMaterial.specularMap?.dispose();
-      earthMaterial.emissiveMap?.dispose();
-
       // Dispose Clouds materials and geometry
-      cloudMaterial.dispose();
-      cloudGeometry.dispose();
-      cloudTexture?.dispose();
+      if (cloudsMeshRef.current) {
+        const cloudsMesh = cloudsMeshRef.current;
+        cloudsMesh.material?.dispose();
+        cloudsMesh.geometry?.dispose();
+        cloudsMesh.material?.map?.dispose();
+      }
 
       // Dispose country borders if they exist
       if (countryBorders) {
@@ -981,10 +997,10 @@ export function useThreeJS(containerRef) {
 
     // Convert lat/lon path to 3D points
     if (pathCoordinates && pathCoordinates.length > 0) {
-      // Earth radius is 1.0 in our scene
-      const earthRadius = 1.0;
+      // Three-globe radius is 100 by default
+      const globeRadius = 100;
       borderPoints = pathCoordinates.map((coord) => {
-        return latLonToVector3(coord[1], coord[0], earthRadius + 0.002);
+        return latLonToVector3(coord[1], coord[0], globeRadius + 0.2);
       });
     }
 
@@ -1181,8 +1197,16 @@ export function useThreeJS(containerRef) {
 
     // Use an accessor function for altitude to ensure it's applied per polygon
     globeRef.current.polygonAltitude((d) => {
-      return d.isHighlighted ? 0.00001 : 0; // Almost flush with the surface
+      console.log(
+        `[DEBUG] Setting polygon altitude for ${d.countryName}: 0.1 (above surface)`
+      );
+      // Use small altitude values since we're using globe's natural coordinate system
+      return 0.1; // Small positive altitude above the globe surface (radius 100)
     });
+
+    console.log(`[DEBUG] Globe current position:`, globeRef.current.position);
+    console.log(`[DEBUG] Globe current scale:`, globeRef.current.scale);
+    console.log(`[DEBUG] Globe current rotation:`, globeRef.current.rotation);
 
     // Clear existing polygons before adding new ones
     globeRef.current.polygonsData([]);
@@ -1196,6 +1220,179 @@ export function useThreeJS(containerRef) {
         polygonData.countryName
       );
       globeRef.current.polygonsData([polygonData]);
+
+      console.log("[DEBUG] Polygon data added to three-globe");
+
+      // COMPREHENSIVE DISTANCE AND POSITION DEBUGGING
+      setTimeout(() => {
+        console.log("=== DISTANCE ANALYSIS START ===");
+
+        // Three-globe reference data  
+        const globe = globeRef.current;
+        const globeRadius = 100; // Three-globe default radius
+        const globeCenter = globe.position.clone();
+
+        console.log(`[DISTANCE] Three-globe radius: ${globeRadius}`);
+        console.log(`[DISTANCE] Three-globe center:`, globeCenter);
+
+        // Globe positioning
+        console.log(`[DISTANCE] Globe position:`, globeRef.current.position);
+        console.log(`[DISTANCE] Globe scale:`, globeRef.current.scale);
+        console.log(`[DISTANCE] Globe rotation:`, globeRef.current.rotation);
+        console.log(
+          `[DISTANCE] Globe children count:`,
+          globeRef.current.children.length
+        );
+
+        globeRef.current.children.forEach((child, index) => {
+          console.log(`[DISTANCE] === Analyzing Globe Child ${index} ===`);
+          console.log(`[DISTANCE] Child type: ${child.type}`);
+          console.log(`[DISTANCE] Child position:`, child.position);
+          console.log(`[DISTANCE] Child scale:`, child.scale);
+          console.log(`[DISTANCE] Child rotation:`, child.rotation);
+
+          // Calculate world position
+          const worldPosition = new THREE.Vector3();
+          child.getWorldPosition(worldPosition);
+          console.log(`[DISTANCE] Child world position:`, worldPosition);
+
+          // Calculate distance from globe center  
+          const distanceFromGlobeCenter = worldPosition.distanceTo(globeCenter);
+          console.log(
+            `[DISTANCE] Distance from Globe center: ${distanceFromGlobeCenter.toFixed(
+              4
+            )}`
+          );
+          console.log(
+            `[DISTANCE] Expected surface distance should be ~${globeRadius + 0.1} (radius + altitude)`
+          );
+          console.log(
+            `[DISTANCE] Actual vs Expected ratio: ${(
+              distanceFromGlobeCenter / (globeRadius + 0.1)
+            ).toFixed(4)}`
+          );
+
+          // Check if it's a mesh with geometry
+          if (child.type === "Mesh" && child.geometry) {
+            child.geometry.computeBoundingSphere();
+            const boundingSphere = child.geometry.boundingSphere;
+            console.log(
+              `[DISTANCE] Child bounding sphere center:`,
+              boundingSphere.center
+            );
+            console.log(
+              `[DISTANCE] Child bounding sphere radius:`,
+              boundingSphere.radius
+            );
+
+            // Check material
+            if (child.material && child.material.map) {
+              console.log(
+                `[DISTANCE] Child has texture map: ${!!child.material.map}`
+              );
+              console.log(
+                `[DISTANCE] Material opacity:`,
+                child.material.opacity
+              );
+              console.log(
+                `[DISTANCE] Material transparent:`,
+                child.material.transparent
+              );
+            }
+          }
+
+          // If it's a group, analyze its children too
+          if (child.type === "Group" && child.children.length > 0) {
+            console.log(
+              `[DISTANCE] Group has ${child.children.length} children`
+            );
+            child.children.forEach((groupChild, groupIndex) => {
+              const groupChildWorldPos = new THREE.Vector3();
+              groupChild.getWorldPosition(groupChildWorldPos);
+              const groupChildDistance =
+                groupChildWorldPos.distanceTo(globeCenter);
+              console.log(
+                `[DISTANCE] Group child ${groupIndex} distance from Globe: ${groupChildDistance.toFixed(
+                  4
+                )}`
+              );
+            });
+          }
+        });
+
+        console.log("=== DISTANCE ANALYSIS END ===");
+      }, 100);
+
+      // Debug: Check globe children after adding polygon
+      setTimeout(() => {
+        console.log(
+          `[DEBUG] Globe children count after adding polygon:`,
+          globeRef.current.children.length
+        );
+        console.log(
+          `[DEBUG] Globe final rotation Y:`,
+          globeRef.current.rotation.y
+        );
+        console.log(`[DEBUG] Globe final position:`, globeRef.current.position);
+        console.log(`[DEBUG] Globe final scale:`, globeRef.current.scale);
+
+        globeRef.current.children.forEach((child, index) => {
+          console.log(`[DEBUG] Globe child ${index}:`, {
+            type: child.type,
+            position: child.position,
+            scale: child.scale,
+            userData: child.userData,
+          });
+
+          // If it's a mesh, check its geometry bounds and world position
+          if (child.type === "Mesh" && child.geometry) {
+            child.geometry.computeBoundingSphere();
+            console.log(
+              `[DEBUG] Child ${index} bounding sphere:`,
+              child.geometry.boundingSphere
+            );
+
+            // Calculate world position
+            const worldPosition = new THREE.Vector3();
+            child.getWorldPosition(worldPosition);
+            console.log(
+              `[DEBUG] Child ${index} world position:`,
+              worldPosition
+            );
+          }
+
+          // If it's a group, check its children
+          if (child.type === "Group" && child.children.length > 0) {
+            console.log(
+              `[DEBUG] Group ${index} has ${child.children.length} children`
+            );
+            child.children.forEach((groupChild, groupIndex) => {
+              const worldPosition = new THREE.Vector3();
+              groupChild.getWorldPosition(worldPosition);
+              console.log(`[DEBUG] Group child ${groupIndex}:`, {
+                type: groupChild.type,
+                localPosition: groupChild.position,
+                worldPosition: worldPosition,
+                material: groupChild.material?.map
+                  ? "Has texture"
+                  : "No texture",
+                materialType: groupChild.material?.constructor.name,
+                hasUserData: !!groupChild.userData,
+                userDataKeys: Object.keys(groupChild.userData || {}),
+                visible: groupChild.visible,
+              });
+
+              // Check if this mesh should have our flag texture
+              if (groupChild.material && groupChild.material.map) {
+                console.log(
+                  `[DEBUG] Found mesh with texture:`,
+                  groupChild.material.map
+                );
+              }
+            });
+          }
+        });
+      }, 100);
 
       // Force a scene update
       if (sceneRef.current) {

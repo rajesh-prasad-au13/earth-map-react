@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>
+      Top 10 Biggest Countries in the World - 3D Earth Visualization
+    </title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: #000;
+        font-family: "League Spartan", sans-serif; /* Updated font */
+      }
+      canvas {
+        display: block;
+      }
+      #tooltip {
+        position: absolute;
+        background-color: rgba(0, 0, 0, 0.75);
+        color: white;
+        padding: 5px 10px;
+        border-radius: 4px;
+        pointer-events: none;
+        font-family: "League Spartan", sans-serif; /* Updated font */
+        font-size: 14px;
+        display: none;
+      }
+      #country-controls {
+        position: absolute;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        /* background-color: rgba(0, 0, 0, 0.75); */ /* Remove background */
+        color: white;
+        padding: 10px;
+        border-radius: 8px;
+        display: flex;
+        gap: 10px;
+        z-index: 100;
+      }
+      #country-controls button {
+        background-color: #2a2a2a;
+        color: white;
+        border: none;
+        padding: 8px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-family: "League Spartan", sans-serif; /* Updated font */
+        font-size: 14px;
+        transition: background-color 0.2s;
+      }
+      #country-controls button:hover {
+        background-color: #3a3a3a;
+      }
+      #country-controls button.active {
+        background-color: #0078d7;
+      }
+      #flag-overlay {
+        position: absolute;
+        top: 70px; /* Position below the current-country display */
+        left: 50%;
+        transform: translateX(-50%) scale(0.8); /* Initial state for animation */
+        opacity: 0;
+        background-color: rgba(0, 0, 0, 0.6);
+        padding: 10px;
+        border-radius: 8px;
+        /* display: none; /* Controlled by 'visible' class */
+        transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
+        z-index: 150; /* Ensure it's above other elements if necessary */
+        pointer-events: none; /* So it doesn't interfere with map interaction */
+      }
+
+      /* Flag Animation Types */
+      #flag-overlay.fade-in.visible {
+        animation: flagFadeIn 1s ease-in-out forwards;
+      }
+
+      #flag-overlay.ripple.visible {
+        animation: flagRipple 1.2s ease-out forwards;
+      }
+
+      #flag-overlay.dissolve.visible {
+        animation: flagDissolve 1.5s ease-in-out forwards;
+      }
+
+      #flag-overlay.visible {
+        opacity: 1;
+        transform: translateX(-50%) scale(1);
+      }
+
+      #flag-overlay img {
+        max-width: 150px;
+        max-height: 100px;
+        display: block;
+        border-radius: 4px;
+      }
+
+      /* Flag Animation Keyframes */
+      @keyframes flagFadeIn {
+        from {
+          opacity: 0;
+          transform: translateX(-50%) scale(0.8) translateY(20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(-50%) scale(1) translateY(0);
+        }
+      }
+
+      @keyframes flagRipple {
+        0% {
+          opacity: 0;
+          transform: translateX(-50%) scale(0.3);
+        }
+        50% {
+          opacity: 0.8;
+          transform: translateX(-50%) scale(1.1);
+        }
+        100% {
+          opacity: 1;
+          transform: translateX(-50%) scale(1);
+        }
+      }
+
+      @keyframes flagDissolve {
+        0% {
+          opacity: 0;
+          transform: translateX(-50%) scale(1);
+          filter: blur(10px) brightness(0.5);
+        }
+        60% {
+          opacity: 0.7;
+          filter: blur(2px) brightness(1.2);
+        }
+        100% {
+          opacity: 1;
+          transform: translateX(-50%) scale(1);
+          filter: blur(0) brightness(1);
+        }
+      }
+
+      /* Download Controls */
+      #download-controls {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        background-color: rgba(0, 0, 0, 0.75);
+        color: white;
+        padding: 15px;
+        border-radius: 8px;
+        z-index: 100;
+        min-width: 200px;
+      }
+
+      #download-controls h3 {
+        margin: 0 0 10px 0;
+        font-size: 16px;
+        color: #ffffff;
+        font-family: "League Spartan", sans-serif; /* Updated font */
+      }
+
+      #download-controls label {
+        display: block;
+        margin: 8px 0 4px 0;
+        font-size: 14px;
+        color: #cccccc;
+        font-family: "League Spartan", sans-serif; /* Updated font */
+      }
+
+      #download-controls select {
+        width: 100%;
+        padding: 6px;
+        margin-bottom: 10px;
+        background-color: #2a2a2a;
+        color: white;
+        border: 1px solid #444;
+        border-radius: 4px;
+        font-family: "League Spartan", sans-serif; /* Updated font */
+        font-size: 14px;
+      }
+
+      #download-controls button {
+        width: 100%;
+        background-color: #0078d7;
+        color: white;
+        border: none;
+        padding: 10px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-family: "League Spartan", sans-serif; /* Updated font */
+        font-size: 14px;
+        transition: background-color 0.2s;
+        margin-top: 5px;
+      }
+
+      #download-controls button:hover:not(:disabled) {
+        background-color: #106ebe;
+      }
+
+      #download-controls button:disabled {
+        background-color: #555;
+        cursor: not-allowed;
+      }
+
+      #download-progress {
+        margin-top: 10px;
+        padding: 8px;
+        background-color: rgba(255, 255, 255, 0.1);
+        border-radius: 4px;
+        display: none;
+        font-size: 12px;
+        font-family: "League Spartan", sans-serif; /* Updated font */
+      }
+
+      #download-progress .progress-bar {
+        width: 100%;
+        height: 4px;
+        background-color: #333;
+        border-radius: 2px;
+        margin-top: 5px;
+        overflow: hidden;
+      }
+
+      #download-progress .progress-fill {
+        height: 100%;
+        background-color: #0078d7;
+        width: 0%;
+        transition: width 0.3s ease;
+      }
+
+      /* YouTube Title Screen Styles */
+      #youtube-title-screen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+        transition: opacity 1s ease-in-out, transform 1s ease-in-out;
+      }
+
+      #youtube-title-screen.fade-out {
+        opacity: 0;
+        transform: scale(1.1);
+        pointer-events: none;
+      }
+
+      .main-title {
+        font-size: 4rem;
+        font-weight: bold;
+        color: white;
+        text-align: center;
+        margin-bottom: 2rem;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        animation: slideInFromTop 1.5s ease-out;
+        font-family: "League Spartan", sans-serif; /* Updated font */
+      }
+
+      .subtitle {
+        font-size: 1.5rem;
+        color: rgba(255, 255, 255, 0.9);
+        margin-bottom: 3rem;
+        text-align: center;
+        animation: slideInFromBottom 1.5s ease-out 0.5s both;
+        font-family: "League Spartan", sans-serif; /* Updated font */
+      }
+
+      .start-button {
+        background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+        color: white;
+        border: none;
+        padding: 1rem 2rem;
+        font-size: 1.2rem;
+        border-radius: 50px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        animation: slideInFromBottom 1.5s ease-out 1s both;
+        font-family: "League Spartan", sans-serif; /* Updated font */
+      }
+
+      .start-button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        background: linear-gradient(45deg, #ee5a24, #ff6b6b);
+      }
+
+      @keyframes slideInFromTop {
+        from {
+          opacity: 0;
+          transform: translateY(-50px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes slideInFromBottom {
+        from {
+          opacity: 0;
+          transform: translateY(50px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* Settings Panel Styles */
+      #settings-panel {
+        /* position: fixed;
+        top: 20px;
+        left: 20px;
+        background: rgba(0, 0, 0, 0.9);
+        color: white;
+        padding: 20px;
+        border-radius: 12px;
+        min-width: 300px;
+        backdrop-filter: blur(10px);
+        z-index: 200;
+        transform: translateX(-100%);
+        transition: transform 0.3s ease-in-out; */
+        display: none;
+      }
+
+      #settings-panel.visible {
+        transform: translateX(0);
+      }
+
+      #settings-toggle {
+        /* position: fixed;
+        top: 20px;
+        left: 20px;
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        border: none;
+        padding: 12px 16px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 16px;
+        z-index: 150;
+        transition: all 0.3s ease; */
+        display: none;
+        font-family: "League Spartan", sans-serif; /* Updated font */
+      }
+
+      #settings-toggle:hover {
+        background: rgba(0, 0, 0, 0.9);
+        transform: scale(1.05);
+      }
+
+      .settings-group {
+        margin-bottom: 20px;
+      }
+
+      .settings-group h3 {
+        margin: 0 0 10px 0;
+        color: #4fc3f7;
+        font-size: 1.1rem;
+        font-family: "League Spartan", sans-serif; /* Updated font */
+      }
+
+      .settings-group label {
+        display: block;
+        margin: 8px 0 4px 0;
+        font-size: 14px;
+        color: #cccccc;
+        font-family: "League Spartan", sans-serif; /* Updated font */
+      }
+
+      .settings-group input,
+      .settings-group select {
+        width: 100%;
+        padding: 8px;
+        margin-bottom: 10px;
+        background-color: #2a2a2a;
+        color: white;
+        border: 1px solid #444;
+        border-radius: 6px;
+        font-family: "League Spartan", sans-serif; /* Updated font */
+        font-size: 14px;
+      }
+
+      .settings-group input[type="color"] {
+        width: 100%;
+        height: 40px;
+        padding: 2px;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+
+      .settings-group input[type="range"] {
+        width: calc(100% - 50px);
+        margin-right: 10px;
+      }
+
+      .settings-group input[type="checkbox"] {
+        width: auto;
+        margin-right: 8px;
+      }
+
+      .settings-group input:focus,
+      .settings-group select:focus {
+        outline: none;
+        border-color: #4fc3f7;
+        box-shadow: 0 0 5px rgba(79, 195, 247, 0.3);
+      }
+
+      .settings-button {
+        background: linear-gradient(45deg, #4fc3f7, #29b6f6);
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: all 0.3s ease;
+        margin-right: 10px;
+        margin-top: 10px;
+        font-family: "League Spartan", sans-serif; /* Updated font */
+      }
+
+      .settings-button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 10px rgba(79, 195, 247, 0.3);
+      }
+
+      .country-rank {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 15px 20px;
+        border-radius: 10px;
+        font-size: 1.5rem;
+        font-weight: bold;
+        z-index: 100;
+        backdrop-filter: blur(10px);
+        font-family: "League Spartan", sans-serif; /* Updated font */
+      }
+
+      /* Improved country info display */
+      #current-country {
+        font-size: 2rem;
+        font-weight: bold;
+        text-align: center;
+        color: white;
+        position: absolute;
+        top: 80px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 15px 30px;
+        background: linear-gradient(
+          45deg,
+          rgba(0, 0, 0, 0.8),
+          rgba(0, 0, 0, 0.6)
+        );
+        border-radius: 15px;
+        backdrop-filter: blur(10px);
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+        border: 2px solid rgba(255, 255, 255, 0.2);
+        font-family: "League Spartan", sans-serif; /* Updated font */
+      }
+
+      /* Hide intro overlay */
+      #intro {
+        display: none;
+      }
+
+      /* Enhanced glow effect styling */
+      @keyframes borderGlow {
+        0% {
+          filter: drop-shadow(0 0 5px rgba(255, 71, 87, 0.6));
+        }
+        50% {
+          filter: drop-shadow(0 0 15px rgba(255, 71, 87, 0.9));
+        }
+        100% {
+          filter: drop-shadow(0 0 5px rgba(255, 71, 87, 0.6));
+        }
+      }
+
+      /* Settings panel improvements for better readability */
+      .settings-group .range-container {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .settings-group .range-container input[type="range"] {
+        flex: 1;
+        margin: 0;
+      }
+
+      .settings-group .range-container span {
+        min-width: 30px;
+        text-align: center;
+        font-weight: bold;
+        color: #4fc3f7;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- YouTube Title Screen -->
+    <div id="youtube-title-screen">
+      <h1 class="main-title">TOP 10 BIGGEST COUNTRIES</h1>
+      <p class="subtitle">In The World - 3D Earth Visualization</p>
+      <button class="start-button" id="start-visualization">
+        Start Exploration
+      </button>
+    </div>
+
+    <!-- Settings Toggle Button -->
+    <button id="settings-toggle">⚙️ Settings</button>
+
+    <!-- Settings Panel -->
+    <div id="settings-panel">
+      <div class="settings-group">
+        <h3>🎬 Video Settings</h3>
+        <label for="video-title">Video Title:</label>
+        <input
+          type="text"
+          id="video-title"
+          value="Top 10 Biggest Countries in the World"
+        />
+
+        <label for="channel-name">Channel Name:</label>
+        <input type="text" id="channel-name" value="Your Channel Name" />
+
+        <label for="animation-speed">Animation Speed:</label>
+        <select id="animation-speed">
+          <option value="slow">Slow (5s per country)</option>
+          <option value="normal" selected>Normal (3s per country)</option>
+          <option value="fast">Fast (2s per country)</option>
+        </select>
+      </div>
+
+      <div class="settings-group">
+        <h3>🌍 Display Settings</h3>
+        <label for="show-flags">
+          <input type="checkbox" id="show-flags" checked /> Show Country Flags
+        </label>
+
+        <label for="show-rank">
+          <input type="checkbox" id="show-rank" checked /> Show Country Rank
+        </label>
+
+        <label for="flag-animation">Flag Animation Type:</label>
+        <select id="flag-animation">
+          <option value="fade-in" selected>Fade In</option>
+          <option value="ripple">Ripple Effect</option>
+          <option value="dissolve">Dissolve</option>
+        </select>
+
+        <label for="country-list">Countries to Show:</label>
+        <select id="country-list">
+          <option value="top10" selected>Top 10 Biggest</option>
+          <option value="top5">Top 5 Biggest</option>
+          <option value="custom">Custom Selection</option>
+        </select>
+      </div>
+
+      <div class="settings-group">
+        <h3>🎨 Border & Effects</h3>
+        <label for="default-border-color">Default Border Color:</label>
+        <input type="color" id="default-border-color" value="#ffffff" />
+
+        <label for="focused-border-color">Focused Border Color:</label>
+        <input type="color" id="focused-border-color" value="#ff4757" />
+
+        <label for="glow-color">Glow Effect Color:</label>
+        <input type="color" id="glow-color" value="#ffffff" />
+
+        <label for="glow-intensity">Glow Intensity:</label>
+        <div class="range-container">
+          <input
+            type="range"
+            id="glow-intensity"
+            min="0.1"
+            max="2.0"
+            step="0.1"
+            value="1.0"
+          />
+          <span id="glow-intensity-value">1.0</span>
+        </div>
+
+        <label for="enable-glow">
+          <input type="checkbox" id="enable-glow" checked /> Enable Glow Effect
+        </label>
+      </div>
+
+      <div class="settings-group">
+        <button class="settings-button" id="apply-settings">
+          Apply Settings
+        </button>
+        <button class="settings-button" id="reset-settings">
+          Reset to Default
+        </button>
+      </div>
+    </div>
+
+    <!-- Country Rank Display -->
+    <div class="country-rank" id="country-rank">#1</div>
+
+    <div id="tooltip"></div>
+    <div id="current-country" style="display: none"></div>
+    <div id="flag-overlay">
+      <img id="flag-image" src="" alt="Country Flag" />
+    </div>
+
+    <div id="country-controls">
+      <!-- Placeholder for the country information card -->
+      <div id="country-info-card"></div>
+      <!-- <button id="prev-country">&laquo; Prev</button>
+      <button id="stopBtn">Start Animation</button> 
+      <button id="next-country">Next &raquo;</button> -->
+    </div>
+
+    <div id="download-controls" style="display: none">
+      <h3>📹 Record Animation</h3>
+
+      <label for="resolution-select">Resolution:</label>
+      <select id="resolution-select">
+        <option value="720p">720p (1280x720)</option>
+        <option value="1080p" selected>1080p (1920x1080)</option>
+        <option value="4k">4K (3840x2160)</option>
+      </select>
+
+      <label for="framerate-select">Frame Rate:</label>
+      <select id="framerate-select">
+        <option value="30">30 FPS</option>
+        <option value="60" selected>60 FPS</option>
+      </select>
+
+      <label for="duration-select">Duration:</label>
+      <select id="duration-select">
+        <option value="10">10 seconds</option>
+        <option value="30" selected>30 seconds</option>
+        <option value="60">1 minute</option>
+        <option value="120">2 minutes</option>
+        <option value="300">5 minutes</option>
+      </select>
+
+      <button id="download-btn">Start Recording</button>
+
+      <div id="download-progress">
+        <div>Recording... <span id="progress-text">0%</span></div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progress-fill"></div>
+        </div>
+      </div>
+    </div>
+    <!-- Dependencies using r128 -->
+    <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three-globe"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- Add TWEEN.js for animations -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+
+    <!-- Custom extensions to Three.js -->
+    <script src="./coreFunctions/GeoJSONGeometry.js"></script>
+
+    <!-- Use type="module" for ES modules with import/export statements -->
+    <script src="/coreFunctions/turf-polylabel.js" type="module"></script>
+    <script src="/coreFunctions/improved-center.js" type="module"></script>
+    <script src="/main.js" type="module"></script>
+  </body>
+</html>
