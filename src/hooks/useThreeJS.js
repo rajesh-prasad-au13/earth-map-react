@@ -194,7 +194,7 @@ export function useThreeJS(containerRef) {
     // Use the geometry property of the GeoJSON feature directly
     globe.polygonGeoJsonGeometry((d) => d.geometry);
     // Set the altitude for the polygons
-    globe.polygonAltitude(0.01);
+    // globe.polygonAltitude(0.01);
     globe.polygonCapColor(() => "#ffffff"); // Default cap color
     globe.polygonSideColor(() => "rgba(255,255,255,0.2)");
     globe.polygonStrokeColor(() => "rgba(255,255,255,0.3)");
@@ -238,7 +238,7 @@ export function useThreeJS(containerRef) {
     globe.polygonAltitude((d) => {
       console.log(`[DEBUG] Initial polygon altitude setup for country data`);
       // Use small altitude values since globe has radius 100 by default
-      return 0.01; // Small positive altitude to ensure visibility above surface
+      return 0.0005; // 0.01 initially  Small positive altitude to ensure visibility above surface
     });
 
     // Position the globe at center - no scaling needed since this IS our earth
@@ -882,7 +882,8 @@ export function useThreeJS(containerRef) {
     // Use an accessor function for altitude to ensure it's applied per polygon
     globeRef.current.polygonAltitude((d) => {
       // Use small altitude values since we're using globe's natural coordinate system
-      return 0.01; // Small positive altitude above the globe surface
+      // return 0.01; // Small positive altitude above the globe surface
+      return 0.005; // 0.01 initially-  Small positive altitude above the globe surface
     });
 
     console.log(`[DEBUG] Globe current position:`, globeRef.current.position);
