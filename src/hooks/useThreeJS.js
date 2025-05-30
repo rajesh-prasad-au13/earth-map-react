@@ -420,7 +420,7 @@ export function useThreeJS(containerRef) {
       let borderPoints = [];
       if (countryFeature.geometry.type === "Polygon") {
         borderPoints = countryFeature.geometry.coordinates[0].map(
-          (coord) => latLonToVector3(coord[1], coord[0], 2.01) // Slightly above surface
+          (coord) => latLonToVector3(coord[1], coord[0], 100.01) // Slightly above globe surface
         );
       } else if (countryFeature.geometry.type === "MultiPolygon") {
         // Use the largest polygon
@@ -433,7 +433,7 @@ export function useThreeJS(containerRef) {
           }
         });
         borderPoints = largestPolygon[0].map((coord) =>
-          latLonToVector3(coord[1], coord[0], 2.01)
+          latLonToVector3(coord[1], coord[0], 100.01)
         );
       }
 
@@ -606,9 +606,9 @@ export function useThreeJS(containerRef) {
       function createPolygonMesh(coordinates, material, name, countryCode) {
         if (coordinates.length < 3) return null;
 
-        // Convert coordinates to 3D vectors
+        // Convert coordinates to 3D vectors (using globe radius 100)
         const points = coordinates.map((coord) => {
-          return latLonToVector3(coord[1], coord[0], 2.001); // Slightly closer to borders
+          return latLonToVector3(coord[1], coord[0], 100.01); // Slightly above globe surface
         });
 
         // Create a simple triangulated mesh using the earcut algorithm approach
@@ -650,10 +650,8 @@ export function useThreeJS(containerRef) {
         const points = [];
         outerRing.forEach((coord) => {
           // GeoJSON format is [longitude, latitude]
-          // Use radius 2.005 (just barely above Earth radius of 2.0)
-          // This positions borders very close to the Earth's surface
-          // 2.02 was too large, making the borders appear to float
-          const vector = latLonToVector3(coord[1], coord[0], 2.003); //2.02 by default by gpt
+          // Use globe radius 100 + small offset for borders
+          const vector = latLonToVector3(coord[1], coord[0], 100.03); // Slightly above globe surface
           points.push(vector);
           pointsProcessed++;
         });
@@ -1675,8 +1673,8 @@ export function useThreeJS(containerRef) {
     // Create visual marker at the centroid point
     createCentroidMarker(avgLat, avgLng, country.name);
 
-    // Convert to 3D position
-    const targetPosition = latLonToVector3(avgLat, avgLng, 1);
+    // Convert to 3D position (using globe radius 100 to match three-globe coordinate system)
+    const targetPosition = latLonToVector3(avgLat, avgLng, 100);
     const cameraOffset = targetPosition
       .clone()
       .normalize()
