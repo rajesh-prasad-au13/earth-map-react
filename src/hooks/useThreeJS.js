@@ -15,6 +15,9 @@ export function useThreeJS(containerRef) {
   const [hoveredCountry, setHoveredCountry] = useState(null);
   const [isAnimating, setIsAnimating] = useState(false);
 
+  // Add a ref to track auto-animation state more reliably
+  const isAutoAnimatingRef = useRef(false);
+
   // Refs for Three.js objects that need to persist
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
@@ -66,7 +69,19 @@ export function useThreeJS(containerRef) {
             ? `${data.features.length} countries found`
             : "No features found"
         );
-        console.log({ data });
+
+        // Log the first few features to understand the structure
+        if (data.features && data.features.length > 0) {
+          console.log(
+            "FETCH: Sample feature properties:",
+            data.features[0].properties
+          );
+          console.log(
+            "FETCH: Available property keys:",
+            Object.keys(data.features[0].properties)
+          );
+        }
+
         setGeojsonCountriesData(data);
       })
       .catch((error) => {
@@ -78,6 +93,12 @@ export function useThreeJS(containerRef) {
     if (!containerRef.current) return;
 
     console.log("RENDER: Starting main Three.js render effect");
+
+    // Check if renderer already exists to prevent duplicate creation
+    if (rendererRef.current) {
+      console.log("RENDER: Renderer already exists, skipping creation");
+      return;
+    }
 
     // --- Scene, Camera, Renderer, Controls Setup ---
     const scene = new THREE.Scene();
@@ -102,6 +123,12 @@ export function useThreeJS(containerRef) {
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setClearColor(0x000011, 1);
+
+    // Clear any existing canvas before adding new one
+    while (containerRef.current.firstChild) {
+      containerRef.current.removeChild(containerRef.current.firstChild);
+    }
+
     containerRef.current.appendChild(renderer.domElement);
 
     // OrbitControls
@@ -292,12 +319,10 @@ export function useThreeJS(containerRef) {
         });
       }
 
-      // Find the country feature in GeoJSON data
-      const countryFeature = geojsonCountriesData.features.find(
-        (feature) =>
-          feature.properties.iso_a2 === countryData.countryCode ||
-          feature.properties.iso_a3 === countryData.countryCode ||
-          feature.properties.name === countryData.countryName
+      // Find the country feature in GeoJSON data using our improved function
+      const countryFeature = findCountryByCode(
+        countryData.countryCode,
+        countryData.countryName
       );
 
       if (!countryFeature) {
@@ -645,6 +670,8 @@ export function useThreeJS(containerRef) {
     window.addEventListener("resize", handleResize);
 
     return () => {
+      console.log("CLEANUP: Starting Three.js cleanup");
+
       window.removeEventListener("resize", handleResize);
 
       // Remove mouse event listeners
@@ -659,6 +686,7 @@ export function useThreeJS(containerRef) {
         );
       }
 
+      // Remove canvas from DOM
       if (
         containerRef.current &&
         renderer.domElement &&
@@ -666,8 +694,16 @@ export function useThreeJS(containerRef) {
       ) {
         containerRef.current.removeChild(renderer.domElement);
       }
+
+      // Dispose renderer and controls
       renderer.dispose();
       controls.dispose();
+
+      // Clear refs
+      rendererRef.current = null;
+      sceneRef.current = null;
+      cameraRef.current = null;
+      controlsRef.current = null;
 
       // Dispose Earth materials and geometry
       earthMaterial.dispose();
@@ -762,6 +798,10 @@ export function useThreeJS(containerRef) {
         displayCountryFlag(countryName, targetCountry);
       }
     }, flagDelay);
+
+    console.log(
+      `[Highlight Country] Country highlighting complete for: ${countryName}`
+    );
   };
 
   const clearCountryHighlight = () => {
@@ -1140,14 +1180,24 @@ export function useThreeJS(containerRef) {
     }
 
     // Make sure we're still in auto-animation mode, unless force flag is true
-    if (!forceAnimate && !state.animation.isAutoAnimating) {
+    if (!forceAnimate && !isAutoAnimatingRef.current) {
       console.log(
-        "[Auto-Animation] Checking auto-animation state:",
-        state.animation.isAutoAnimating
+        "[Auto-Animation] Checking auto-animation ref state:",
+        isAutoAnimatingRef.current
       );
-      console.log("[Auto-Animation] Auto-animation stopped, aborting sequence");
+      console.log(
+        "[Auto-Animation] Auto-animation stopped (ref check), aborting sequence"
+      );
       return;
     }
+
+    console.log(
+      `[Auto-Animation] State check passed. isAutoAnimating (ref): ${isAutoAnimatingRef.current}, forceAnimate: ${forceAnimate}`
+    );
+
+    console.log(
+      `[Auto-Animation] Auto-animation state confirmed: ${state.animation.isAutoAnimating}`
+    );
 
     const country = topCountries[countryIndex];
     console.log(
@@ -1160,7 +1210,7 @@ export function useThreeJS(containerRef) {
       console.warn("[Auto-Animation] GeoJSON data not loaded yet");
       // Try again after a short delay
       setTimeout(() => {
-        if (state.animation.isAutoAnimating) {
+        if (isAutoAnimatingRef.current) {
           animateToCountry(countryIndex, callback, forceAnimate);
         }
       }, 1000);
@@ -1176,7 +1226,7 @@ export function useThreeJS(containerRef) {
       );
       // Skip to next country
       setTimeout(() => {
-        if (state.animation.isAutoAnimating) {
+        if (isAutoAnimatingRef.current) {
           dispatch(actions.nextCountry());
           animateToCountry(
             (countryIndex + 1) % topCountries.length,
@@ -1193,9 +1243,11 @@ export function useThreeJS(containerRef) {
     dispatch(actions.setCurrentCountryIndex(countryIndex));
 
     // Highlight the country with visual effects
+    console.log(`[Auto-Animation] Highlighting country: ${country.name}`);
     highlightCountry(country.code, country.name);
 
     // Calculate country center (simple centroid for now)
+    console.log(`[Auto-Animation] Calculating centroid for: ${country.name}`);
     let latSum = 0,
       lngSum = 0,
       pointCount = 0;
@@ -1256,6 +1308,10 @@ export function useThreeJS(containerRef) {
     const avgLat = latSum / pointCount;
     const avgLng = lngSum / pointCount;
 
+    console.log(
+      `[Auto-Animation] Calculated centroid for ${country.name}: lat=${avgLat}, lng=${avgLng}, pointCount=${pointCount}`
+    );
+
     // Convert to 3D position
     const targetPosition = latLonToVector3(avgLat, avgLng, 1);
     const cameraOffset = targetPosition
@@ -1263,13 +1319,34 @@ export function useThreeJS(containerRef) {
       .normalize()
       .multiplyScalar(COUNTRY_VIEW_ZOOM_DISTANCE);
 
+    console.log(`[Auto-Animation] Animating camera to ${country.name}`);
+
     // Animate camera to country
     animateCameraToPosition(cameraOffset, targetPosition, () => {
+      console.log(
+        `[Auto-Animation] Camera animation complete for ${country.name}, waiting ${state.animation.timeToWaitForHighlightedCountry}ms`
+      );
+      console.log(
+        `[Auto-Animation] Current auto-animation state during callback: ${state.animation.isAutoAnimating}`
+      );
+
       // Stay focused on country for specified time
       setTimeout(() => {
-        if (state.animation.isAutoAnimating) {
+        // Re-check the ref state at the time of execution
+        console.log(
+          `[Auto-Animation] Timeout callback executing. Current ref state: ${isAutoAnimatingRef.current}`
+        );
+
+        if (isAutoAnimatingRef.current) {
+          console.log(
+            `[Auto-Animation] Moving to next country after ${country.name}`
+          );
           dispatch(actions.nextCountry());
           animateToCountry(countryIndex + 1, callback);
+        } else {
+          console.log(
+            `[Auto-Animation] Auto-animation stopped (ref check), not proceeding to next country`
+          );
         }
       }, state.animation.timeToWaitForHighlightedCountry);
     });
@@ -1315,6 +1392,9 @@ export function useThreeJS(containerRef) {
         requestAnimationFrame(animateFrame);
       } else {
         setIsAnimating(false);
+        console.log(
+          `[Camera Animation] Camera animation completed, calling callback`
+        );
         if (callback) callback();
       }
     };
@@ -1324,14 +1404,32 @@ export function useThreeJS(containerRef) {
 
   const startAutoAnimation = () => {
     console.log("[Auto-Animation] Starting auto-animation sequence");
+    console.log(
+      "[Auto-Animation] Current state before starting:",
+      state.animation.isAutoAnimating
+    );
+
+    // Set ref to true immediately
+    isAutoAnimatingRef.current = true;
+
     dispatch(actions.startAutoAnimation());
-    // Force start the animation regardless of current state
-    console.log("[Auto-Animation] Force initializing first country");
-    animateToCountry(0, null, true);
+
+    // Add a small delay to ensure the state is updated
+    setTimeout(() => {
+      console.log(
+        "[Auto-Animation] State after dispatch:",
+        state.animation.isAutoAnimating
+      );
+      console.log("[Auto-Animation] Ref state:", isAutoAnimatingRef.current);
+      // Force start the animation regardless of current state
+      console.log("[Auto-Animation] Force initializing first country");
+      animateToCountry(0, null, true);
+    }, 100);
   };
 
   const stopAutoAnimation = () => {
     console.log("[Auto-Animation] Stopping auto-animation");
+    isAutoAnimatingRef.current = false;
     dispatch(actions.stopAutoAnimation());
   };
 
@@ -1343,27 +1441,38 @@ export function useThreeJS(containerRef) {
     }
 
     console.log(
-      `Finding country for code: ${countryCode}, name: ${countryName}`
+      `[FIND COUNTRY] Looking for: code="${countryCode}", name="${countryName}"`
     );
 
-    // First try exact code match
+    // First try exact code match (check multiple possible property names)
     let match = geojsonCountriesData.features.find((feature) => {
-      // Try all possible property names for country codes
-      const featureCode =
-        feature.properties.ISO_A2 ||
-        feature.properties.iso_a2 ||
-        feature.properties.ISO_A3 ||
-        feature.properties.iso_a3 ||
-        feature.properties.ADM0_A3 ||
-        feature.properties.adm0_a3;
+      const props = feature.properties;
+      const possibleCodes = [
+        props.ISO_A2,
+        props.iso_a2,
+        props.Iso_a2,
+        props.ISO_A3,
+        props.iso_a3,
+        props.Iso_a3,
+        props.ADM0_A3,
+        props.adm0_a3,
+        props.CODE,
+        props.code,
+        props.SOV_A3,
+        props.sov_a3,
+      ].filter(Boolean); // Remove null/undefined values
 
-      return featureCode === countryCode;
+      const foundMatch = possibleCodes.some((code) => code === countryCode);
+      if (foundMatch) {
+        console.log(`[FIND COUNTRY] Code match found with properties:`, props);
+      }
+      return foundMatch;
     });
 
     if (match) {
       console.log(
-        `Found country by exact code match: ${
-          match.properties.name || "unnamed"
+        `[FIND COUNTRY] ✓ Found by exact code match: ${
+          match.properties.name || match.properties.NAME || "unnamed"
         }`
       );
       return match;
@@ -1371,24 +1480,72 @@ export function useThreeJS(containerRef) {
 
     // If no exact match, try by name
     match = geojsonCountriesData.features.find((feature) => {
-      const featureName =
-        feature.properties.name || feature.properties.NAME || "";
-      return featureName.toLowerCase() === countryName.toLowerCase();
+      const props = feature.properties;
+      const possibleNames = [
+        props.name,
+        props.NAME,
+        props.Name,
+        props.NAME_EN,
+        props.name_en,
+        props.ADMIN,
+        props.admin,
+        props.NAME_LONG,
+        props.name_long,
+      ].filter(Boolean);
+
+      const foundMatch = possibleNames.some(
+        (name) => name.toLowerCase() === countryName.toLowerCase()
+      );
+      return foundMatch;
     });
 
     if (match) {
       console.log(
-        `Found country by exact name match: ${
-          match.properties.name || "unnamed"
+        `[FIND COUNTRY] ✓ Found by exact name match: ${
+          match.properties.name || match.properties.NAME || "unnamed"
         }`
       );
       return match;
     }
 
+    // Special cases for common mismatches
+    const specialCases = {
+      USA: ["United States", "US", "United States of America", "America"],
+      CAN: ["Canada"],
+      CHN: ["China", "People's Republic of China"],
+      BRA: ["Brazil", "Brasil"],
+      AUS: ["Australia"],
+      IND: ["India"],
+      ARG: ["Argentina"],
+      KAZ: ["Kazakhstan"],
+      DZA: ["Algeria"],
+    };
+
+    if (specialCases[countryCode]) {
+      match = geojsonCountriesData.features.find((feature) => {
+        const props = feature.properties;
+        const featureName = props.name || props.NAME || props.ADMIN || "";
+        return specialCases[countryCode].some(
+          (specialName) =>
+            featureName.toLowerCase().includes(specialName.toLowerCase()) ||
+            specialName.toLowerCase().includes(featureName.toLowerCase())
+        );
+      });
+
+      if (match) {
+        console.log(
+          `[FIND COUNTRY] ✓ Found by special case: ${
+            match.properties.name || match.properties.NAME || "unnamed"
+          }`
+        );
+        return match;
+      }
+    }
+
     // Last resort: try fuzzy name matching (substring)
     match = geojsonCountriesData.features.find((feature) => {
-      const featureName =
-        feature.properties.name || feature.properties.NAME || "";
+      const props = feature.properties;
+      const featureName = props.name || props.NAME || props.ADMIN || "";
       return (
         featureName.toLowerCase().includes(countryName.toLowerCase()) ||
         countryName.toLowerCase().includes(featureName.toLowerCase())
@@ -1397,36 +1554,29 @@ export function useThreeJS(containerRef) {
 
     if (match) {
       console.log(
-        `Found country by fuzzy name match: ${
-          match.properties.name || "unnamed"
+        `[FIND COUNTRY] ✓ Found by fuzzy match: ${
+          match.properties.name || match.properties.NAME || "unnamed"
         }`
       );
       return match;
     }
 
-    // Special cases for common mismatches
-    if (countryCode === "USA" || countryName === "United States") {
-      match = geojsonCountriesData.features.find((feature) => {
-        const featureName = feature.properties.name || "";
-        return (
-          featureName.includes("United States") ||
-          featureName.includes("USA") ||
-          featureName === "US" ||
-          featureName === "United States of America"
-        );
-      });
-    }
-
-    if (match) {
-      console.log(
-        `Found country by special case: ${match.properties.name || "unnamed"}`
-      );
-      return match;
-    }
-
     console.warn(
-      `Could not find country for code: ${countryCode}, name: ${countryName}`
+      `[FIND COUNTRY] ✗ Could not find country for code: ${countryCode}, name: ${countryName}`
     );
+
+    // Log a few sample country names from the GeoJSON for debugging
+    const sampleNames = geojsonCountriesData.features
+      .slice(0, 5)
+      .map(
+        (f) =>
+          f.properties.name ||
+          f.properties.NAME ||
+          f.properties.ADMIN ||
+          "unnamed"
+      );
+    console.log("[FIND COUNTRY] Sample countries in GeoJSON:", sampleNames);
+
     return null;
   };
 

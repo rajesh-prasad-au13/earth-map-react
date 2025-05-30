@@ -1,6 +1,5 @@
 import { useRef, useState } from "react";
 import { useThreeJS } from "../hooks/useThreeJS";
-import AnimationControls from "./AnimationControls";
 import SettingsPanel from "./SettingsPanel";
 import RecordingControls from "./RecordingControls";
 import IntroScreen from "./IntroScreen";
@@ -26,6 +25,10 @@ export default function EarthViewer() {
   // Handle intro screen closing
   const handleStartExploration = () => {
     setShowIntro(false);
+    // Start animation automatically after 1 second
+    setTimeout(() => {
+      startAutoAnimation();
+    }, 1000);
   };
 
   return (
@@ -157,12 +160,6 @@ export default function EarthViewer() {
       {/* Controls - Show if enabled in settings */}
       {state.ui.showControls && (
         <>
-          {/* Animation Controls */}
-          <AnimationControls
-            startAutoAnimation={startAutoAnimation}
-            stopAutoAnimation={stopAutoAnimation}
-          />
-
           {/* Recording Controls */}
           <RecordingControls />
         </>

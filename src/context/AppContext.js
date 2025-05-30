@@ -48,7 +48,7 @@ const initialState = {
     time: 0,
     currentCountryIndex: 0,
     isAutoAnimating: false,
-    timeToWaitForHighlightedCountry: 9000, // 9 seconds total per country
+    timeToWaitForHighlightedCountry: 3000, // 3 seconds total per country (reduced from 9s)
   },
 
   // Recording settings
