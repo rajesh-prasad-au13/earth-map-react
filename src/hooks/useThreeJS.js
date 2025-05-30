@@ -191,13 +191,31 @@ export function useThreeJS(containerRef) {
     globe.showGlobe(false); // Don't show the globe since we have our own earth mesh
     globe.polygonsData([]);
 
-    // Use a simpler approach for debugging - solid green caps with white borders
-    globe.polygonCapColor(() => "#00ff00"); // Bright green for visibility
-    globe.polygonSideColor(() => "#ffffff"); // White sides
-    globe.polygonStrokeColor(() => "#ffffff"); // White stroke
+    // Setup polygon materials using accessor functions that check for texture
+    globe.polygonCapMaterial((d) => {
+      // If the polygon has a texture attached, use it
+      if (d.flagTexture) {
+        return new THREE.MeshBasicMaterial({
+          map: d.flagTexture,
+          transparent: true,
+          opacity: 0.9,
+          side: THREE.DoubleSide,
+        });
+      }
+      // Otherwise use a default green material
+      return new THREE.MeshBasicMaterial({
+        color: "#00ff00",
+        transparent: true,
+        opacity: 0.7,
+        side: THREE.DoubleSide,
+      });
+    });
 
-    // Increase polygon altitude for better visibility
-    globe.polygonAltitude(0.1); // Much higher for debugging
+    globe.polygonSideColor(() => "rgba(255,255,255,0.2)");
+    globe.polygonStrokeColor(() => "rgba(255,255,255,0.3)");
+
+    // Keep polygons very close to the surface
+    globe.polygonAltitude(0.001);
 
     // Position the globe to match our earth mesh
     globe.rotation.y = -Math.PI / 2; // Align the globe data with our earth mesh
@@ -1144,26 +1162,6 @@ export function useThreeJS(containerRef) {
       `[Flag Filled Country] Creating flag-filled country for: ${countryName}`
     );
 
-    // ALTERNATE APPROACH: Create a debug rectangular plane with the flag texture
-    if (flagTexture && sceneRef.current) {
-      // Create a simple plane
-      const planeGeometry = new THREE.PlaneGeometry(1, 1);
-      const planeMaterial = new THREE.MeshBasicMaterial({
-        map: flagTexture,
-        side: THREE.DoubleSide,
-        transparent: true,
-      });
-      const flagPlane = new THREE.Mesh(planeGeometry, planeMaterial);
-
-      // Position it above the earth
-      flagPlane.position.set(0, 2.5, 0);
-      flagPlane.lookAt(0, 0, 0);
-
-      // Add to scene
-      sceneRef.current.add(flagPlane);
-      console.log("[DEBUG] Added flag texture on a debug plane");
-    }
-
     // Create a polygon data object for three-globe
     // Important: We directly attach the flag texture to the data object
     // This will be used by the polygonCapMaterial accessor function
@@ -1179,8 +1177,8 @@ export function useThreeJS(containerRef) {
       !!flagTexture
     );
 
-    // First set the altitude for better visibility
-    globeRef.current.polygonAltitude(0.05);
+    // Keep polygons close to the surface
+    globeRef.current.polygonAltitude(0.001);
 
     // Clear existing polygons before adding new ones
     globeRef.current.polygonsData([]);
@@ -1650,19 +1648,10 @@ export function useThreeJS(containerRef) {
     return null;
   };
 
-  // Add a debug sphere to verify the rendering and visibility
+  // Debug sphere has been removed
   useEffect(() => {
     if (sceneRef.current && rendererRef.current) {
-      // Create a debug sphere
-      const debugSphere = new THREE.Mesh(
-        new THREE.SphereGeometry(0.1, 16, 16),
-        new THREE.MeshBasicMaterial({ color: 0xff0000 })
-      );
-
-      // Position it visibly outside the earth
-      debugSphere.position.set(0, 3, 0);
-      sceneRef.current.add(debugSphere);
-      console.log("[DEBUG] Added red debug sphere at position (0, 3, 0)");
+      // We've removed the debug sphere to keep the visuals clean
 
       // Force render to make sure it appears
       if (cameraRef.current) {
