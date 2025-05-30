@@ -1185,6 +1185,17 @@ export function useThreeJS(containerRef) {
 
     // Highlight the country with visual effects
     console.log(`[Auto-Animation] Highlighting country: ${country.name}`);
+
+    // Log current camera position before animation
+    if (cameraRef.current) {
+      const currentCameraDistance = cameraRef.current.position.length();
+      console.log(
+        `[Auto-Animation] Current camera distance before animation: ${currentCameraDistance.toFixed(
+          2
+        )}`
+      );
+    }
+
     highlightCountry(country.code, country.name);
 
     // Calculate country centroid using our improved function
@@ -1249,8 +1260,13 @@ export function useThreeJS(containerRef) {
 
     // Animate camera to country with improved multi-phase movement
     animateCameraToPosition(cameraPosition, targetPosition, () => {
+      const currentCameraDistance = cameraRef.current?.position.length() || 0;
       console.log(
-        `[Auto-Animation] Camera animation complete for ${country.name}, waiting ${state.animation.timeToWaitForHighlightedCountry}ms`
+        `[Auto-Animation] Camera animation complete for ${
+          country.name
+        }, camera distance: ${currentCameraDistance.toFixed(2)}, waiting ${
+          state.animation.timeToWaitForHighlightedCountry
+        }ms`
       );
       console.log(
         `[Auto-Animation] Current auto-animation state during callback: ${state.animation.isAutoAnimating}`
@@ -1301,7 +1317,7 @@ export function useThreeJS(containerRef) {
 
     // Final target position and distance
     const finalDirection = cameraPosition.clone().normalize();
-    const finalDistance = cameraPosition.length();
+    const finalDistance = COUNTRY_VIEW_ZOOM_DISTANCE; // Use our desired final distance, not the passed one
 
     console.log(
       `[Camera Animation] Smooth transition: from ${startDistance.toFixed(
@@ -1326,6 +1342,14 @@ export function useThreeJS(containerRef) {
       state.COUNTRY_TO_COUNTRY_ZOOM_DISTANCE
     );
     const maxAltitude = baseAltitude + (angularDistance / Math.PI) * 100; // Higher arc for longer distances
+
+    console.log(
+      `[Camera Animation] Projectile calculation: startDistance=${startDistance.toFixed(
+        2
+      )}, baseAltitude=${baseAltitude.toFixed(
+        2
+      )}, maxAltitude=${maxAltitude.toFixed(2)}`
+    );
 
     // Calculate duration based on distance and complexity
     const MIN_DURATION = 3000;
@@ -1522,25 +1546,28 @@ export function useThreeJS(containerRef) {
         const originalMinDistance = controls.minDistance;
         controls.minDistance = 0;
 
-        camera.position.copy(cameraPosition);
+        // Set final position using our calculated direction and distance
+        const finalCameraPosition = finalDirection
+          .clone()
+          .multiplyScalar(finalDistance);
+        camera.position.copy(finalCameraPosition);
         controls.target.copy(lookAtTarget);
         controls.update();
 
         // Verify the position was actually set
         const actualDistance = camera.position.length();
-        const targetDistance = cameraPosition.length();
         console.log(
           `[Camera Animation] Position verification: actual=${actualDistance.toFixed(
             2
-          )}, target=${targetDistance.toFixed(2)}`
+          )}, target=${finalDistance.toFixed(2)}`
         );
 
         // If position wasn't set correctly, force it again
-        if (Math.abs(actualDistance - targetDistance) > 1) {
+        if (Math.abs(actualDistance - finalDistance) > 1) {
           console.log(
             `[Camera Animation] Position mismatch detected, forcing position again`
           );
-          camera.position.copy(cameraPosition);
+          camera.position.copy(finalCameraPosition);
           camera.updateMatrixWorld(true);
         }
 
