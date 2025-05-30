@@ -190,10 +190,14 @@ export function useThreeJS(containerRef) {
     globe.globeImageUrl("/Albedo.jpg");
     globe.showGlobe(false); // Don't show the globe since we have our own earth mesh
     globe.polygonsData([]);
-    globe.polygonCapColor(() => "rgba(0,0,0,0)");
-    globe.polygonSideColor(() => "rgba(0,0,0,0)");
-    globe.polygonStrokeColor(() => "rgba(0,0,0,0)");
-    globe.polygonAltitude(0.01);
+
+    // Use a simpler approach for debugging - solid green caps with white borders
+    globe.polygonCapColor(() => "#00ff00"); // Bright green for visibility
+    globe.polygonSideColor(() => "#ffffff"); // White sides
+    globe.polygonStrokeColor(() => "#ffffff"); // White stroke
+
+    // Increase polygon altitude for better visibility
+    globe.polygonAltitude(0.1); // Much higher for debugging
 
     // Position the globe to match our earth mesh
     globe.rotation.y = -Math.PI / 2; // Align the globe data with our earth mesh
@@ -1140,120 +1144,82 @@ export function useThreeJS(containerRef) {
       `[Flag Filled Country] Creating flag-filled country for: ${countryName}`
     );
 
+    // ALTERNATE APPROACH: Create a debug rectangular plane with the flag texture
+    if (flagTexture && sceneRef.current) {
+      // Create a simple plane
+      const planeGeometry = new THREE.PlaneGeometry(1, 1);
+      const planeMaterial = new THREE.MeshBasicMaterial({
+        map: flagTexture,
+        side: THREE.DoubleSide,
+        transparent: true,
+      });
+      const flagPlane = new THREE.Mesh(planeGeometry, planeMaterial);
+
+      // Position it above the earth
+      flagPlane.position.set(0, 2.5, 0);
+      flagPlane.lookAt(0, 0, 0);
+
+      // Add to scene
+      sceneRef.current.add(flagPlane);
+      console.log("[DEBUG] Added flag texture on a debug plane");
+    }
+
     // Create a polygon data object for three-globe
+    // Important: We directly attach the flag texture to the data object
+    // This will be used by the polygonCapMaterial accessor function
     const polygonData = {
       ...countryFeature,
-      flagTexture: flagTexture,
+      flagTexture: flagTexture, // This is key - attach texture to data
       countryName: countryName,
       isHighlighted: true,
     };
 
-    console.log(`[Flag Filled Country] Created polygon data:`, polygonData);
+    console.log(
+      `[Flag Filled Country] Created polygon data with texture:`,
+      !!flagTexture
+    );
 
-    // Update globe with the flag polygon
-    globeRef.current.polygonsData([polygonData]);
-    console.log(1);
-    // Configure polygon rendering
-    if (flagTexture) {
-      console.log("i have flag texture, applying it to the country polygon");
-      // Create a material that directly references the texture
-      const materialWithTexture = new THREE.MeshBasicMaterial({
-        map: flagTexture,
-        transparent: true,
-        opacity: 0.9,
-        side: THREE.DoubleSide,
-      });
+    // First set the altitude for better visibility
+    globeRef.current.polygonAltitude(0.05);
 
-      // Apply this material to the country polygon using the material property
-      globeRef.current.polygonCapMaterial(materialWithTexture);
+    // Clear existing polygons before adding new ones
+    globeRef.current.polygonsData([]);
+
+    // Force a small delay to ensure the globe is ready
+    setTimeout(() => {
+      // Then update globe with the flag polygon data
+      // The texture will be accessed through the polygonCapMaterial accessor function
       console.log(
-        `[Flag Filled Country] Set polygon cap material with texture`
+        "[Flag Filled Country] Adding polygon data to globe:",
+        polygonData.countryName
+      );
+      globeRef.current.polygonsData([polygonData]);
+
+      // Force a scene update
+      if (sceneRef.current) {
+        sceneRef.current.updateMatrixWorld();
+      }
+    }, 50);
+
+    // Force a material update by resetting the accessor (will use the one we defined at initialization)
+    if (flagTexture) {
+      console.log(
+        `[Flag Filled Country] Flag texture is available for ${countryName}`
+      );
+
+      // Make sure the texture is properly configured
+      flagTexture.needsUpdate = true;
+      flagTexture.minFilter = THREE.LinearFilter;
+      flagTexture.magFilter = THREE.LinearFilter;
+
+      // Log that we're using the accessor function that references polygon.flagTexture
+      console.log(
+        `[Flag Filled Country] Using material accessor for flag texture`
       );
     } else {
-      // For non-texture case, use a bright color for visibility
-      globeRef.current.polygonCapColor(() => {
-        console.log(`[Flag Filled Country] Using fallback color`);
-        return "#00ff00"; // Bright green
-      });
-    }
-
-    globeRef.current.polygonSideColor((d) => {
-      return d.flagTexture ? "rgba(255,255,255,0.1)" : "rgba(0,255,0,0.1)";
-    });
-
-    globeRef.current.polygonStrokeColor((d) => {
-      return d.flagTexture ? "rgba(255,255,255,0.3)" : "rgba(0,255,0,0.3)";
-    });
-
-    globeRef.current.polygonAltitude((d) => {
-      return 0.01; // Slightly above surface
-    });
-
-    // Since polygonMaterial is not available, we need to find the polygon meshes and update them directly
-    if (flagTexture) {
       console.log(
-        `[Flag Filled Country] Applying flag texture material for ${countryName}`
+        `[Flag Filled Country] Using fallback color for ${countryName}`
       );
-
-      // Wait a short time for the 3D objects to be created
-      setTimeout(() => {
-        try {
-          // Find country polygons in the globe's children
-          const objects = globeRef.current.children || [];
-          console.log(
-            `[Flag Filled Country] Globe has ${objects.length} children`
-          );
-
-          // Look for polygon objects related to countries
-          objects.forEach((object) => {
-            // Look for polygon meshes or groups that might contain them
-            if (object.type === "Mesh" || object.type === "Group") {
-              console.log(
-                `[Flag Filled Country] Found object: ${object.type}`,
-                object
-              );
-
-              // If it's a mesh with material, apply texture directly
-              if (
-                object.material &&
-                object.userData &&
-                object.userData.__dataObj === polygonData
-              ) {
-                const material = new THREE.MeshBasicMaterial({
-                  map: flagTexture,
-                  transparent: true,
-                  opacity: 0.9,
-                  side: THREE.DoubleSide,
-                });
-                object.material = material;
-                object.material.needsUpdate = true;
-                console.log(
-                  `[Flag Filled Country] Applied flag texture to mesh directly`
-                );
-              }
-
-              // If it's a group, look for meshes inside
-              if (object.children) {
-                object.children.forEach((child) => {
-                  if (
-                    child.material &&
-                    child.userData &&
-                    child.userData.__dataObj === polygonData
-                  ) {
-                    child.material.map = flagTexture;
-                    child.material.needsUpdate = true;
-                    console.log(
-                      `[Flag Filled Country] Applied flag texture to child mesh`
-                    );
-                  }
-                });
-              }
-            }
-          });
-        } catch (err) {
-          console.error(`[Flag Filled Country] Error applying texture:`, err);
-        }
-      }, 100);
     }
 
     console.log(
@@ -1683,6 +1649,27 @@ export function useThreeJS(containerRef) {
 
     return null;
   };
+
+  // Add a debug sphere to verify the rendering and visibility
+  useEffect(() => {
+    if (sceneRef.current && rendererRef.current) {
+      // Create a debug sphere
+      const debugSphere = new THREE.Mesh(
+        new THREE.SphereGeometry(0.1, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0xff0000 })
+      );
+
+      // Position it visibly outside the earth
+      debugSphere.position.set(0, 3, 0);
+      sceneRef.current.add(debugSphere);
+      console.log("[DEBUG] Added red debug sphere at position (0, 3, 0)");
+
+      // Force render to make sure it appears
+      if (cameraRef.current) {
+        rendererRef.current.render(sceneRef.current, cameraRef.current);
+      }
+    }
+  }, [sceneRef.current, rendererRef.current]);
 
   // Return interaction state for use in components
   return {
