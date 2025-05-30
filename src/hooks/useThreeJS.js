@@ -1196,15 +1196,19 @@ export function useThreeJS(containerRef) {
     // Create visual marker at the centroid point
     createCentroidMarker(avgLat, avgLng, country.name);
 
-    // Convert to 3D position (using three-globe's radius of 50)
-    const phi = (90 - avgLat) * (Math.PI / 180);
-    const theta = (avgLng + 180) * (Math.PI / 180);
-    const radius = 50; // three-globe's default radius
+    // Get the actual 3D position from three-globe's coordinate system
+    // This ensures camera looks at the same position as the centroid marker
+    const coordsResult = globeRef.current.getCoords(avgLat, avgLng, 0);
 
-    const targetPosition = new THREE.Vector3(
-      -radius * Math.sin(phi) * Math.cos(theta),
-      radius * Math.cos(phi),
-      radius * Math.sin(phi) * Math.sin(theta)
+    // Convert to THREE.Vector3 if it's not already
+    const targetPosition =
+      coordsResult instanceof THREE.Vector3
+        ? coordsResult
+        : new THREE.Vector3(coordsResult.x, coordsResult.y, coordsResult.z);
+
+    console.log(
+      `[Auto-Animation] Three-globe target position for ${country.name}:`,
+      targetPosition
     );
 
     const cameraOffset = targetPosition
