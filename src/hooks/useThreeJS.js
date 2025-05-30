@@ -171,9 +171,9 @@ export function useThreeJS(containerRef) {
       specularMap: textureLoader.load("/Ocean.png"), // Specular map for water highlights
       specular: new THREE.Color("grey"), // Adjust specular color if needed
       shininess: 10, // Adjust shininess
-      emissiveMap: textureLoader.load("/night_lights_modified.png"), // Night lights
-      emissive: new THREE.Color(0xffffff), // Make emissive map visible
-      emissiveIntensity: 0.8, // Adjust intensity of night lights
+      // emissiveMap: textureLoader.load("/night_lights_modified.png"), // Night lights
+      // emissive: new THREE.Color(0xffffff), // Make emissive map visible
+      // emissiveIntensity: 0.8, // Adjust intensity of night lights
     });
 
     // Create the Earth mesh
