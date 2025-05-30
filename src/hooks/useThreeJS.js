@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import ThreeGlobe from "three-globe";
+import polylabel from "polylabel";
 import { useAppContext, actions } from "../context/AppContext";
 import { topCountries } from "../data/topCountries";
 
@@ -642,73 +643,90 @@ export function useThreeJS(containerRef) {
 
     if (!sceneRef.current || !globeRef.current) return;
 
-    // IMPORTANT: Use three-globe's coordinate system instead of manual conversion
-    // three-globe uses radius 50 by default, not 100
-    const phi = (90 - lat) * (Math.PI / 180);
-    const theta = (lng + 180) * (Math.PI / 180);
-    const radius = 50.5; // Slightly above three-globe's surface (radius 50)
-
-    const position = new THREE.Vector3(
-      -radius * Math.sin(phi) * Math.cos(theta),
-      radius * Math.cos(phi),
-      radius * Math.sin(phi) * Math.sin(theta)
-    );
-
-    // Create a small glowing sphere
-    const markerGeometry = new THREE.SphereGeometry(0.8, 8, 8);
-    const markerMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00ff00, // Bright green
-      transparent: true,
-      opacity: 0.9,
-    });
-
-    const marker = new THREE.Mesh(markerGeometry, markerMaterial);
-    marker.position.copy(position);
-    marker.userData = { type: "centroidMarker", countryName };
-
-    // Add a subtle glow effect
-    const glowGeometry = new THREE.SphereGeometry(1.2, 8, 8);
-    const glowMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00ff00,
-      transparent: true,
-      opacity: 0.3,
-      side: THREE.BackSide,
-    });
-
-    const glow = new THREE.Mesh(glowGeometry, glowMaterial);
-    glow.position.copy(position);
-    glow.userData = { type: "centroidMarkerGlow", countryName };
-
-    sceneRef.current.add(marker);
-    sceneRef.current.add(glow);
-
-    // Store references for cleanup
-    centroidMarkerRef.current = { marker, glow };
-
     console.log(
-      `[CENTROID] Created centroid marker for ${countryName} at lat=${lat}, lng=${lng}`
+      `[CENTROID] Creating marker for ${countryName} at lat=${lat.toFixed(
+        4
+      )}, lng=${lng.toFixed(4)}`
     );
+
+    // Use three-globe's native object positioning system instead of manual conversion
+    // This ensures the marker uses the same coordinate system as the country polygons
+    const markerData = [
+      {
+        lat: lat,
+        lng: lng,
+        name: countryName,
+      },
+    ];
+
+    // Configure three-globe to render custom objects at these coordinates
+    globeRef.current
+      .objectsData(markerData)
+      .objectLat((d) => d.lat)
+      .objectLng((d) => d.lng)
+      .objectAltitude(0.05) // Small altitude above the surface
+      .objectThreeObject((d) => {
+        // Create a bright cyan sphere
+        const markerGeometry = new THREE.SphereGeometry(2.0, 16, 16);
+        const markerMaterial = new THREE.MeshBasicMaterial({
+          color: 0x00ffff, // Bright cyan color
+          transparent: false,
+          opacity: 1.0,
+          emissive: 0x008888, // Strong emissive glow
+        });
+
+        const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+        marker.userData = { type: "centroidMarker", countryName: d.name };
+
+        // Add a glow effect
+        const glowGeometry = new THREE.SphereGeometry(3.0, 16, 16);
+        const glowMaterial = new THREE.MeshBasicMaterial({
+          color: 0x00ffff,
+          transparent: true,
+          opacity: 0.6,
+          side: THREE.BackSide,
+          emissive: 0x004444,
+        });
+
+        const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+        marker.add(glow); // Add glow as child of marker
+
+        console.log(
+          `[CENTROID] Created three-globe native marker for ${d.name}`
+        );
+        return marker;
+      });
+
+    // Store reference for cleanup
+    centroidMarkerRef.current = { usingThreeGlobe: true };
   };
 
   // Function to remove the centroid marker
   const removeCentroidMarker = () => {
-    if (centroidMarkerRef.current && sceneRef.current) {
-      const { marker, glow } = centroidMarkerRef.current;
+    if (centroidMarkerRef.current) {
+      if (centroidMarkerRef.current.usingThreeGlobe && globeRef.current) {
+        // Clear three-globe objects
+        globeRef.current.objectsData([]);
+        console.log(`[CENTROID] Removed three-globe centroid marker`);
+      } else if (sceneRef.current) {
+        // Handle old manual markers (fallback)
+        const { marker, glow } = centroidMarkerRef.current;
 
-      if (marker) {
-        sceneRef.current.remove(marker);
-        marker.geometry?.dispose();
-        marker.material?.dispose();
-      }
+        if (marker) {
+          sceneRef.current.remove(marker);
+          marker.geometry?.dispose();
+          marker.material?.dispose();
+        }
 
-      if (glow) {
-        sceneRef.current.remove(glow);
-        glow.geometry?.dispose();
-        glow.material?.dispose();
+        if (glow) {
+          sceneRef.current.remove(glow);
+          glow.geometry?.dispose();
+          glow.material?.dispose();
+        }
+        console.log(`[CENTROID] Removed manual centroid marker`);
       }
 
       centroidMarkerRef.current = null;
-      console.log(`[CENTROID] Removed centroid marker`);
     }
   };
 
@@ -1486,78 +1504,72 @@ const calculateCountryCentroid = (feature) => {
     return { lat: 0, lng: 0 };
   }
 
-  const countryName = feature.properties?.name || feature.properties?.NAME || "Unknown";
-  console.log(`[Centroid] Calculating centroid for: ${countryName}`);
+  const countryName =
+    feature.properties?.name || feature.properties?.NAME || "Unknown";
+  console.log(`[Centroid] Calculating polylabel centroid for: ${countryName}`);
 
-  // Strategy 1: Use bounding box if available (most reliable for visual center)
-  if (feature.bbox && feature.bbox.length >= 4) {
-    const [west, south, east, north] = feature.bbox;
-    const centerLng = (west + east) / 2;
-    const centerLat = (north + south) / 2;
-    
-    console.log(`[Centroid] Using BBOX center for ${countryName}: lat=${centerLat.toFixed(4)}, lng=${centerLng.toFixed(4)}`);
-    return { lat: centerLat, lng: centerLng };
-  }
-
-  // Strategy 2: Calculate bounding box from coordinates
-  let allCoordinates = [];
-  
-  if (feature.geometry.type === "Polygon") {
-    // For simple polygon, use the first (outer) ring
-    allCoordinates = feature.geometry.coordinates[0];
-  } else if (feature.geometry.type === "MultiPolygon") {
-    // For multipolygon, find the largest polygon and use its outer ring
-    let maxArea = 0;
+  try {
     let largestPolygon = null;
+    let maxArea = 0;
 
-    feature.geometry.coordinates.forEach((polygon) => {
-      const coords = polygon[0]; // outer ring
-      // Calculate rough area using shoelace formula
-      let area = 0;
-      for (let i = 0; i < coords.length - 1; i++) {
-        area += Math.abs(coords[i][0] * coords[i + 1][1] - coords[i + 1][0] * coords[i][1]);
-      }
-      
-      if (area > maxArea) {
-        maxArea = area;
-        largestPolygon = coords;
-      }
-    });
-    
-    if (largestPolygon) {
-      allCoordinates = largestPolygon;
+    if (feature.geometry.type === "Polygon") {
+      // For simple polygon, use the outer ring
+      largestPolygon = feature.geometry.coordinates[0];
+    } else if (feature.geometry.type === "MultiPolygon") {
+      // For multipolygon, find the largest polygon by area
+      feature.geometry.coordinates.forEach((polygon) => {
+        const coords = polygon[0]; // outer ring
+
+        // Calculate area using shoelace formula
+        let area = 0;
+        for (let i = 0; i < coords.length - 1; i++) {
+          area += Math.abs(
+            coords[i][0] * coords[i + 1][1] - coords[i + 1][0] * coords[i][1]
+          );
+        }
+
+        if (area > maxArea) {
+          maxArea = area;
+          largestPolygon = coords;
+        }
+      });
     }
-  }
 
-  if (allCoordinates && allCoordinates.length > 0) {
-    // Calculate bounding box from coordinates
-    let minLng = Infinity, maxLng = -Infinity;
-    let minLat = Infinity, maxLat = -Infinity;
-    
-    allCoordinates.forEach(([lng, lat]) => {
-      minLng = Math.min(minLng, lng);
-      maxLng = Math.max(maxLng, lng);
-      minLat = Math.min(minLat, lat);
-      maxLat = Math.max(maxLat, lat);
-    });
-    
-    const centerLng = (minLng + maxLng) / 2;
-    const centerLat = (minLat + maxLat) / 2;
-    
-    console.log(`[Centroid] Using calculated BBOX center for ${countryName}: lat=${centerLat.toFixed(4)}, lng=${centerLng.toFixed(4)}`);
-    return { lat: centerLat, lng: centerLng };
-  }
+    if (!largestPolygon || largestPolygon.length < 3) {
+      console.warn(`[Centroid] No valid polygon found for ${countryName}`);
+      return { lat: 0, lng: 0 };
+    }
 
-  // Strategy 3: Fallback to properties if available
-  if (feature.properties?.LAT && feature.properties?.LON) {
-    const lat = parseFloat(feature.properties.LAT);
-    const lng = parseFloat(feature.properties.LON);
-    console.log(`[Centroid] Using properties fallback for ${countryName}: lat=${lat}, lng=${lng}`);
+    // Use polylabel to find the pole of inaccessibility (visual center)
+    const centroidPoint = polylabel([largestPolygon], 1.0);
+    const [lng, lat] = centroidPoint;
+
+    console.log(
+      `[Centroid] Polylabel centroid for ${countryName}: lat=${lat.toFixed(
+        4
+      )}, lng=${lng.toFixed(4)}`
+    );
     return { lat, lng };
+  } catch (error) {
+    console.error(
+      `[Centroid] Error calculating polylabel centroid for ${countryName}:`,
+      error
+    );
+
+    // Fallback to simple bounding box center
+    if (feature.bbox && feature.bbox.length >= 4) {
+      const [west, south, east, north] = feature.bbox;
+      const centerLng = (west + east) / 2;
+      const centerLat = (north + south) / 2;
+
+      console.log(
+        `[Centroid] Using BBOX fallback for ${countryName}: lat=${centerLat.toFixed(
+          4
+        )}, lng=${centerLng.toFixed(4)}`
+      );
+      return { lat: centerLat, lng: centerLng };
+    }
+
+    return { lat: 0, lng: 0 };
   }
-
-  console.warn(`[Centroid] Could not calculate centroid for ${countryName}`);
-  return { lat: 0, lng: 0 };
 };
-
-
