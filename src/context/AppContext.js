@@ -62,9 +62,9 @@ const initialState = {
     quality: "high",
   },
 
-  // Zoom distance constants (from original implementation)
+  // Zoom distance constants (from reference implementation)
   INITIAL_ZOOM_DISTANCE: 350,
-  COUNTRY_VIEW_ZOOM_DISTANCE: 110,
+  COUNTRY_VIEW_ZOOM_DISTANCE: 150,
   COUNTRY_TO_COUNTRY_ZOOM_DISTANCE: 220,
 };
 

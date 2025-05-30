@@ -132,7 +132,7 @@ export function useThreeJS(containerRef) {
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
     controls.screenSpacePanning = false;
-    controls.minDistance = 110; // Min zoom for three-globe (radius 100 + 10)
+    controls.minDistance = 50; // Min zoom for three-globe (allow camera to reach 150)
     controls.maxDistance = 500; // Max zoom for three-globe
     controls.enablePan = true; // Allow panning
 
@@ -1237,6 +1237,11 @@ export function useThreeJS(containerRef) {
       .clone()
       .multiplyScalar(COUNTRY_VIEW_ZOOM_DISTANCE);
 
+    console.log(
+      `[Auto-Animation] Calculated camera position distance: ${cameraPosition
+        .length()
+        .toFixed(2)} (should be ${COUNTRY_VIEW_ZOOM_DISTANCE})`
+    );
     console.log(`[Auto-Animation] Animating camera to ${country.name}`);
 
     // Reset border animation trigger state for new animation
@@ -1286,6 +1291,9 @@ export function useThreeJS(containerRef) {
     setIsAnimating(true);
     setIsCameraMoving(true);
 
+    // Disable OrbitControls during animation to prevent interference
+    controls.enabled = false;
+
     // Store starting positions
     const startPosition = camera.position.clone();
     const startTarget = controls.target.clone();
@@ -1297,6 +1305,12 @@ export function useThreeJS(containerRef) {
     const isInitialMovement =
       Math.abs(currentDistance - INITIAL_ZOOM_DISTANCE) < 10;
     const hasPreviousFocus = state.camera.previousCameraPosition !== null;
+
+    console.log(
+      `[Camera Animation] Animation mode: currentDistance=${currentDistance.toFixed(
+        2
+      )}, isInitialMovement=${isInitialMovement}, hasPreviousFocus=${hasPreviousFocus}`
+    );
 
     // Get final target direction
     const finalDirection = cameraPosition.clone().normalize();
@@ -1423,7 +1437,9 @@ export function useThreeJS(containerRef) {
           console.log(
             `[Camera Animation] Phase 3: Zoom In to ${zoomInDistance.toFixed(
               2
-            )}`
+            )} (progress: ${(normalizedT * 100).toFixed(
+              1
+            )}%, target: ${COUNTRY_VIEW_ZOOM_DISTANCE})`
           );
         }
       } else if (isInitialMovement) {
@@ -1507,7 +1523,9 @@ export function useThreeJS(containerRef) {
           console.log(
             `[Camera Animation] Initial Phase 3: Zoom In to ${zoomInDistance.toFixed(
               2
-            )}`
+            )} (progress: ${(normalizedT * 100).toFixed(
+              1
+            )}%, target: ${COUNTRY_VIEW_ZOOM_DISTANCE})`
           );
         }
       } else {
@@ -1564,7 +1582,9 @@ export function useThreeJS(containerRef) {
           console.log(
             `[Camera Animation] Direct Phase 2: Zoom In to ${zoomInDistance.toFixed(
               2
-            )}`
+            )} (progress: ${(normalizedT * 100).toFixed(
+              1
+            )}%, target: ${COUNTRY_VIEW_ZOOM_DISTANCE})`
           );
         }
       }
@@ -1575,9 +1595,35 @@ export function useThreeJS(containerRef) {
         requestAnimationFrame(animateFrame);
       } else {
         // Ensure camera is at exact final position when animation completes
+        // Temporarily disable distance constraints to allow exact positioning
+        const originalMinDistance = controls.minDistance;
+        controls.minDistance = 0;
+
         camera.position.copy(cameraPosition);
         controls.target.copy(lookAtTarget);
         controls.update();
+
+        // Verify the position was actually set
+        const actualDistance = camera.position.length();
+        const targetDistance = cameraPosition.length();
+        console.log(
+          `[Camera Animation] Position verification: actual=${actualDistance.toFixed(
+            2
+          )}, target=${targetDistance.toFixed(2)}`
+        );
+
+        // If position wasn't set correctly, force it again
+        if (Math.abs(actualDistance - targetDistance) > 1) {
+          console.log(
+            `[Camera Animation] Position mismatch detected, forcing position again`
+          );
+          camera.position.copy(cameraPosition);
+          camera.updateMatrixWorld(true);
+        }
+
+        // Restore original constraints and re-enable controls
+        controls.minDistance = originalMinDistance;
+        controls.enabled = true;
 
         // Store the current position for the next country transition
         dispatch(actions.setPreviousCameraPosition(camera.position.clone()));
@@ -1586,7 +1632,9 @@ export function useThreeJS(containerRef) {
         setIsCameraMoving(false);
 
         console.log(
-          `[Camera Animation] Animation completed, camera at ${COUNTRY_VIEW_ZOOM_DISTANCE}`
+          `[Camera Animation] Animation completed, camera at distance ${camera.position
+            .length()
+            .toFixed(2)} (target: ${COUNTRY_VIEW_ZOOM_DISTANCE})`
         );
         if (callback) callback();
       }
