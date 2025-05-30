@@ -35,6 +35,7 @@ export function useThreeJS(containerRef) {
   const countryBordersRef = useRef(null);
   const cloudsMeshRef = useRef(null);
   const activeBorderOutlineRef = useRef(null);
+  const centroidMarkerRef = useRef(null); // For centroid visualization
   const flagLoadingTimeoutRef = useRef(null);
   const globeRef = useRef(null); // For three-globe instance
 
@@ -778,6 +779,9 @@ export function useThreeJS(containerRef) {
       cameraRef.current = null;
       controlsRef.current = null;
 
+      // Remove centroid marker
+      removeCentroidMarker();
+
       // Dispose Clouds materials and geometry
       if (cloudsMeshRef.current) {
         const cloudsMesh = cloudsMeshRef.current;
@@ -811,6 +815,13 @@ export function useThreeJS(containerRef) {
           if (child.material) child.material.dispose();
         });
         scene.remove(activeBorderOutlineRef.current);
+      }
+
+      // Dispose centroid marker if it exists
+      if (centroidMarkerRef.current) {
+        scene.remove(centroidMarkerRef.current);
+        centroidMarkerRef.current.geometry.dispose();
+        centroidMarkerRef.current.material.dispose();
       }
 
       cancelAnimationFrame(animationId);
@@ -964,9 +975,80 @@ export function useThreeJS(containerRef) {
       });
     }
 
+    // Remove centroid marker
+    removeCentroidMarker();
+
     // Clear selected country
     setSelectedCountry(null);
     dispatch(actions.selectCountry(null));
+  };
+
+  // Function to create a visual marker at the centroid point
+  const createCentroidMarker = (lat, lng, countryName) => {
+    // Remove any existing centroid marker
+    removeCentroidMarker();
+
+    if (!sceneRef.current) return;
+
+    // Convert lat/lng to 3D position (using globe radius 100)
+    const position = latLonToVector3(lat, lng, 100.5); // Slightly above globe surface
+
+    // Create a small glowing sphere
+    const markerGeometry = new THREE.SphereGeometry(0.8, 8, 8);
+    const markerMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00ff00, // Bright green
+      transparent: true,
+      opacity: 0.9,
+    });
+
+    const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+    marker.position.copy(position);
+    marker.userData = { type: "centroidMarker", countryName };
+
+    // Add a subtle glow effect
+    const glowGeometry = new THREE.SphereGeometry(1.2, 8, 8);
+    const glowMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00ff00,
+      transparent: true,
+      opacity: 0.3,
+      side: THREE.BackSide,
+    });
+
+    const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+    glow.position.copy(position);
+    glow.userData = { type: "centroidMarkerGlow", countryName };
+
+    sceneRef.current.add(marker);
+    sceneRef.current.add(glow);
+
+    // Store references for cleanup
+    centroidMarkerRef.current = { marker, glow };
+
+    console.log(
+      `[CENTROID] Created centroid marker for ${countryName} at lat=${lat}, lng=${lng}`
+    );
+  };
+
+  // Function to remove the centroid marker
+  const removeCentroidMarker = () => {
+    if (centroidMarkerRef.current && sceneRef.current) {
+      const { marker, glow } = centroidMarkerRef.current;
+
+      if (marker) {
+        sceneRef.current.remove(marker);
+        marker.geometry?.dispose();
+        marker.material?.dispose();
+      }
+
+      if (glow) {
+        sceneRef.current.remove(glow);
+        glow.geometry?.dispose();
+        glow.material?.dispose();
+      }
+
+      centroidMarkerRef.current = null;
+      console.log(`[CENTROID] Removed centroid marker`);
+    }
   };
 
   const createCountryBorderGlow = (countryFeature, countryName) => {
@@ -1589,6 +1671,9 @@ export function useThreeJS(containerRef) {
     console.log(
       `[Auto-Animation] Calculated centroid for ${country.name}: lat=${avgLat}, lng=${avgLng}, pointCount=${pointCount}`
     );
+
+    // Create visual marker at the centroid point
+    createCentroidMarker(avgLat, avgLng, country.name);
 
     // Convert to 3D position
     const targetPosition = latLonToVector3(avgLat, avgLng, 1);
