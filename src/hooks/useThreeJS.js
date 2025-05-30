@@ -214,8 +214,10 @@ export function useThreeJS(containerRef) {
     globe.polygonSideColor(() => "rgba(255,255,255,0.2)");
     globe.polygonStrokeColor(() => "rgba(255,255,255,0.3)");
 
-    // Keep polygons very close to the surface
-    globe.polygonAltitude(0.001);
+    // Use an accessor function for altitude to ensure it's applied per polygon
+    globe.polygonAltitude((d) => {
+      return d.isHighlighted ? 0.00001 : 0; // Almost flush with the surface
+    });
 
     // Position the globe to match our earth mesh
     globe.rotation.y = -Math.PI / 2; // Align the globe data with our earth mesh
@@ -1177,8 +1179,10 @@ export function useThreeJS(containerRef) {
       !!flagTexture
     );
 
-    // Keep polygons close to the surface
-    globeRef.current.polygonAltitude(0.001);
+    // Use an accessor function for altitude to ensure it's applied per polygon
+    globeRef.current.polygonAltitude((d) => {
+      return d.isHighlighted ? 0.00001 : 0; // Almost flush with the surface
+    });
 
     // Clear existing polygons before adding new ones
     globeRef.current.polygonsData([]);
