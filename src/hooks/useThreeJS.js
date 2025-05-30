@@ -40,7 +40,8 @@ export function useThreeJS(containerRef) {
 
   // Animation constants from centralized state (adjusted for three-globe radius 100)
   const INITIAL_ZOOM_DISTANCE = state.INITIAL_ZOOM_DISTANCE; // Use original values for three-globe
-  const COUNTRY_TO_COUNTRY_ZOOM_DISTANCE = state.COUNTRY_TO_COUNTRY_ZOOM_DISTANCE;
+  const COUNTRY_TO_COUNTRY_ZOOM_DISTANCE =
+    state.COUNTRY_TO_COUNTRY_ZOOM_DISTANCE;
   const COUNTRY_VIEW_ZOOM_DISTANCE = state.COUNTRY_VIEW_ZOOM_DISTANCE;
 
   // --- Helper function to convert lat/lon to 3D position ---
@@ -183,10 +184,10 @@ export function useThreeJS(containerRef) {
     // --- Three-Globe Setup (Primary Earth) ---
     // Create a new ThreeGlobe instance as our main Earth
     const globe = new ThreeGlobe();
-    
+
     // Configure the globe to be our primary Earth (matching reference implementation)
     globe.globeImageUrl("/Albedo.jpg"); // Earth texture
-    globe.bumpImageUrl("/Bump.jpg"); // Bump map for terrain  
+    globe.bumpImageUrl("/Bump.jpg"); // Bump map for terrain
     globe.showAtmosphere(true); // Enable atmosphere
     globe.atmosphereColor("#87ceeb"); // Light sky blue atmosphere
     globe.atmosphereAltitude(0.15); // Atmosphere height
@@ -240,7 +241,10 @@ export function useThreeJS(containerRef) {
     console.log("[DEBUG] Three-globe position:", globe.position);
     console.log("[DEBUG] Three-globe scale:", globe.scale);
     console.log("[DEBUG] Three-globe default radius: 100");
-    console.log("[DEBUG] Three-globe rotation Y after setting:", globe.rotation.y);
+    console.log(
+      "[DEBUG] Three-globe rotation Y after setting:",
+      globe.rotation.y
+    );
 
     // CRITICAL: Check three-globe's internal radius
     console.log("[DEBUG] ThreeGlobe internal radius:", globe.getGlobeRadius());
@@ -369,8 +373,8 @@ export function useThreeJS(containerRef) {
           setIsAnimating(false);
           console.log(`Animation complete for: ${countryData.countryName}`);
 
-          // Create animated border outline
-          createAnimatedBorderOutline(countryData);
+          // Note: Border outline disabled - using flag-textured polygons instead
+          // createAnimatedBorderOutline(countryData);
         }
       };
 
@@ -712,8 +716,7 @@ export function useThreeJS(containerRef) {
 
           // Make country borders rotate with Globe
           if (countryBordersRef.current) {
-            countryBordersRef.current.rotation.y =
-              globeRef.current.rotation.y;
+            countryBordersRef.current.rotation.y = globeRef.current.rotation.y;
           }
         }
       }
@@ -847,8 +850,8 @@ export function useThreeJS(containerRef) {
     dispatch(actions.selectCountry(countryName));
     setSelectedCountry({ countryCode, countryName, feature: targetCountry });
 
-    // Create glowing border effect for the highlighted country
-    createCountryBorderGlow(targetCountry, countryName);
+    // Note: Border glow disabled - using flag-textured polygons instead
+    // createCountryBorderGlow(targetCountry, countryName);
 
     // Clear any existing flag loading timeout
     if (flagLoadingTimeoutRef.current) {
@@ -937,23 +940,26 @@ export function useThreeJS(containerRef) {
       activeBorderOutlineRef.current = null;
     }
 
-    // Also clean up any standalone flag meshes that might exist
+    // Also clean up any standalone flag meshes and border glows that might exist
     if (sceneRef.current) {
-      const flagMeshesToRemove = [];
+      const elementsToRemove = [];
       sceneRef.current.traverse((child) => {
-        if (child.userData?.type === "countryFlag") {
-          flagMeshesToRemove.push(child);
+        if (
+          child.userData?.type === "countryFlag" ||
+          child.userData?.type === "countryBorderGlow"
+        ) {
+          elementsToRemove.push(child);
         }
       });
 
-      flagMeshesToRemove.forEach((flagMesh) => {
+      elementsToRemove.forEach((element) => {
         try {
-          sceneRef.current.remove(flagMesh);
-          if (flagMesh.material?.map) flagMesh.material.map.dispose();
-          if (flagMesh.geometry) flagMesh.geometry.dispose();
-          if (flagMesh.material) flagMesh.material.dispose();
+          sceneRef.current.remove(element);
+          if (element.material?.map) element.material.map.dispose();
+          if (element.geometry) element.geometry.dispose();
+          if (element.material) element.material.dispose();
         } catch (error) {
-          console.warn("Error cleaning up flag mesh:", error);
+          console.warn("Error cleaning up element:", error);
         }
       });
     }
@@ -1227,7 +1233,7 @@ export function useThreeJS(containerRef) {
       setTimeout(() => {
         console.log("=== DISTANCE ANALYSIS START ===");
 
-        // Three-globe reference data  
+        // Three-globe reference data
         const globe = globeRef.current;
         const globeRadius = 100; // Three-globe default radius
         const globeCenter = globe.position.clone();
@@ -1256,7 +1262,7 @@ export function useThreeJS(containerRef) {
           child.getWorldPosition(worldPosition);
           console.log(`[DISTANCE] Child world position:`, worldPosition);
 
-          // Calculate distance from globe center  
+          // Calculate distance from globe center
           const distanceFromGlobeCenter = worldPosition.distanceTo(globeCenter);
           console.log(
             `[DISTANCE] Distance from Globe center: ${distanceFromGlobeCenter.toFixed(
@@ -1264,11 +1270,14 @@ export function useThreeJS(containerRef) {
             )}`
           );
           console.log(
-            `[DISTANCE] Expected surface distance should be ~${globeRadius + 0.1} (radius + altitude)`
+            `[DISTANCE] Expected surface distance should be ~${
+              globeRadius + 0.1
+            } (radius + altitude)`
           );
           console.log(
             `[DISTANCE] Actual vs Expected ratio: ${(
-              distanceFromGlobeCenter / (globeRadius + 0.1)
+              distanceFromGlobeCenter /
+              (globeRadius + 0.1)
             ).toFixed(4)}`
           );
 
