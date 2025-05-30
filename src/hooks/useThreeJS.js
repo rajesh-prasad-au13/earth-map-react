@@ -793,9 +793,20 @@ export function useThreeJS(containerRef) {
 
     // Schedule flag display after delay (last 4 seconds of highlight)
     const flagDelay = state.animation.timeToWaitForHighlightedCountry - 4000;
+    console.log(`[Highlight Country] Scheduling flag display for ${countryName} in ${flagDelay}ms`);
+    console.log(`[Highlight Country] Total wait time: ${state.animation.timeToWaitForHighlightedCountry}ms`);
+    
     flagLoadingTimeoutRef.current = setTimeout(() => {
-      if (selectedCountry?.countryCode === countryCode) {
+      console.log(`[Highlight Country] Flag timeout triggered for ${countryName}`);
+      console.log(`[Highlight Country] Current selected country:`, selectedCountry);
+      console.log(`[Highlight Country] Target country code:`, countryCode);
+      
+      // Always display flag for the triggered country during auto-animation
+      if (isAutoAnimatingRef.current || selectedCountry?.countryCode === countryCode) {
+        console.log(`[Highlight Country] Calling displayCountryFlag for ${countryName}`);
         displayCountryFlag(countryName, targetCountry);
+      } else {
+        console.log(`[Highlight Country] Skipping flag display - not in auto-animation and country mismatch`);
       }
     }, flagDelay);
 
@@ -986,7 +997,7 @@ export function useThreeJS(containerRef) {
     return { borderLine, glowMesh };
   };
 
-  const displayCountryFlag = (countryFeature, countryName) => {
+  const displayCountryFlag = (countryName, countryFeature) => {
     // Skip flag display if disabled in settings
     if (state.countries.showFlags === false) {
       return;
@@ -997,21 +1008,29 @@ export function useThreeJS(containerRef) {
       return;
     }
 
-    // Clean up any previous flags to avoid memory leaks
-    clearCountryHighlight();
+    console.log(`[Flag Display] Starting flag display for: ${countryName}`);
+    console.log(`[Flag Display] Country feature:`, countryFeature);
 
     // Generate a clean country name for the flag file
-    // Ensure countryName is a string before calling replace
     const countryNameStr = String(countryName);
     const cleanCountryName = countryNameStr.replace(/\s+/g, " ").trim();
 
     const flagPath = `/flags/${cleanCountryName}.png`;
-    console.log(`Loading flag from path: ${flagPath}`);
+    console.log(`[Flag Display] Raw country name: "${countryName}"`);
+    console.log(`[Flag Display] Clean country name: "${cleanCountryName}"`);
+    console.log(`[Flag Display] Flag path: "${flagPath}"`);
+    console.log(`[Flag Display] showFlags setting:`, state.countries.showFlags);
+
+    // Clear any existing flag loading timeout
+    if (flagLoadingTimeoutRef.current) {
+      clearTimeout(flagLoadingTimeoutRef.current);
+      flagLoadingTimeoutRef.current = null;
+    }
 
     // Set a loading timeout so we don't wait forever
     flagLoadingTimeoutRef.current = setTimeout(() => {
-      console.warn(`Flag loading timed out for ${countryName}`);
-      applyFlagTextureToCountry(countryFeature, null, countryName);
+      console.warn(`[Flag Display] Flag loading timed out for ${countryName}`);
+      createFlagFilledCountry(countryFeature, null, countryName);
     }, 3000);
 
     const textureLoader = new THREE.TextureLoader();
@@ -1019,142 +1038,247 @@ export function useThreeJS(containerRef) {
       flagPath,
       (texture) => {
         clearTimeout(flagLoadingTimeoutRef.current);
+        flagLoadingTimeoutRef.current = null;
 
         // Configure texture for better appearance
         texture.minFilter = THREE.LinearFilter;
         texture.magFilter = THREE.LinearFilter;
+        texture.wrapS = THREE.ClampToEdgeWrapping;
+        texture.wrapT = THREE.ClampToEdgeWrapping;
 
-        console.log(`Flag texture loaded successfully for ${countryName}`);
+        console.log(
+          `[Flag Display] Flag texture loaded successfully for ${countryName}`
+        );
 
-        // Apply the flag texture to the country
-        applyFlagTextureToCountry(countryFeature, texture, countryName);
+        // Create flag-filled country
+        createFlagFilledCountry(countryFeature, texture, countryName);
       },
       undefined,
       (error) => {
         clearTimeout(flagLoadingTimeoutRef.current);
-        console.warn(`Could not load flag texture for ${countryName}:`, error);
-        // Still apply a highlight even without flag
-        applyFlagTextureToCountry(countryFeature, null, countryName);
+        flagLoadingTimeoutRef.current = null;
+        console.error(`[Flag Display] Could not load flag texture for ${countryName}:`);
+        console.error(`[Flag Display] Flag path attempted: ${flagPath}`);
+        console.error(`[Flag Display] Error details:`, error);
+        console.error(`[Flag Display] Error message:`, error.message);
+        console.error(`[Flag Display] Error status:`, error.status);
+        
+        // Still create highlight even without flag
+        createFlagFilledCountry(countryFeature, null, countryName);
       }
     );
   };
 
-  const applyFlagTextureToCountry = (
+  const createFlagFilledCountry = (
     countryFeature,
     flagTexture,
     countryName
   ) => {
+    console.log(`[Flag Filled Country] Starting creation for: ${countryName}`);
+    console.log(`[Flag Filled Country] Has flag texture:`, !!flagTexture);
+    console.log(`[Flag Filled Country] Country feature geometry type:`, countryFeature?.geometry?.type);
+    
     if (!countryFeature || !countryFeature.geometry) {
-      console.warn("No country feature for flag texture application");
+      console.warn(
+        "[Flag Filled Country] No country feature for flag texture application"
+      );
       return;
     }
 
-    // Calculate country center for flag placement
-    const coordinates = countryFeature.geometry?.coordinates;
-    const type = countryFeature.geometry?.type;
-    let centerLat = 0,
-      centerLon = 0,
-      pointCount = 0;
+    console.log(
+      `[Flag Filled Country] Creating flag-filled country for: ${countryName}`
+    );
+
+    // Extract coordinates from GeoJSON
+    const coordinates = countryFeature.geometry.coordinates;
+    const type = countryFeature.geometry.type;
 
     if (!coordinates || !type) {
-      console.warn("Invalid country geometry for flag placement");
+      console.warn("[Flag Filled Country] Invalid country geometry");
       return;
     }
 
-    // Calculate centroid
+    // Create a group to hold all country parts
+    const countryGroup = new THREE.Group();
+    countryGroup.userData = { type: "flagFilledCountry", countryName };
+
     try {
-      if (type === "Polygon" && coordinates[0]) {
-        coordinates[0].forEach((coord) => {
-          if (Array.isArray(coord) && coord.length >= 2) {
-            centerLon += coord[0];
-            centerLat += coord[1];
-            pointCount++;
-          }
-        });
+      if (type === "Polygon") {
+        const mesh = createCountryPolygonMesh(
+          coordinates,
+          flagTexture,
+          countryName
+        );
+        if (mesh) countryGroup.add(mesh);
       } else if (type === "MultiPolygon") {
-        coordinates.forEach((polygon) => {
-          if (polygon && polygon[0]) {
-            polygon[0].forEach((coord) => {
-              if (Array.isArray(coord) && coord.length >= 2) {
-                centerLon += coord[0];
-                centerLat += coord[1];
-                pointCount++;
-              }
-            });
-          }
+        coordinates.forEach((polygonCoords, index) => {
+          const mesh = createCountryPolygonMesh(
+            polygonCoords,
+            flagTexture,
+            `${countryName}_${index}`
+          );
+          if (mesh) countryGroup.add(mesh);
         });
       }
     } catch (error) {
-      console.error("Error calculating country centroid:", error);
+      console.error(
+        "[Flag Filled Country] Error creating country mesh:",
+        error
+      );
       return;
     }
 
-    // Prevent division by zero
-    if (pointCount === 0) {
-      console.warn("No valid points found for flag placement");
+    if (countryGroup.children.length === 0) {
+      console.warn("[Flag Filled Country] No valid meshes created");
       return;
     }
 
-    centerLat /= pointCount;
-    centerLon /= pointCount;
+    console.log(`[Flag Filled Country] Created ${countryGroup.children.length} meshes for ${countryName}`);
 
-    // Convert to 3D position
-    const flagPosition = latLonToVector3(centerLat, centerLon, 2.05);
+    // Add the country group to the scene
+    sceneRef.current.add(countryGroup);
+    console.log(`[Flag Filled Country] Added country group to scene for ${countryName}`);
 
-    // Create flag plane geometry
-    const flagWidth = 0.3;
-    const flagHeight = 0.2;
-    const flagGeometry = new THREE.PlaneGeometry(flagWidth, flagHeight);
+    // Store reference for cleanup - add to existing border outline
+    if (!activeBorderOutlineRef.current) {
+      activeBorderOutlineRef.current = countryGroup;
+    } else {
+      // If activeBorderOutlineRef is not a group, we need to handle it carefully
+      if (activeBorderOutlineRef.current.add) {
+        activeBorderOutlineRef.current.add(countryGroup);
+      } else {
+        // If it's an array or single object, convert to group
+        const existingObjects = Array.isArray(activeBorderOutlineRef.current)
+          ? activeBorderOutlineRef.current
+          : [activeBorderOutlineRef.current];
 
-    // Create flag material
-    let flagMaterial;
+        const newGroup = new THREE.Group();
+        existingObjects.forEach((obj) => {
+          if (obj && obj.parent) {
+            obj.parent.remove(obj);
+          }
+          if (obj) {
+            newGroup.add(obj);
+          }
+        });
+        newGroup.add(countryGroup);
+        activeBorderOutlineRef.current = newGroup;
+        sceneRef.current.add(newGroup);
+      }
+    }
+
+    console.log(
+      `[Flag Filled Country] Flag-filled country created for: ${countryName}`
+    );
+  };
+
+  const createCountryPolygonMesh = (polygonCoords, flagTexture, name) => {
+    console.log(`[Polygon Mesh] Creating mesh for: ${name}`);
+    console.log(`[Polygon Mesh] Has flag texture:`, !!flagTexture);
+    
+    if (!polygonCoords || !polygonCoords[0] || polygonCoords[0].length < 3) {
+      console.warn(`[Polygon Mesh] Invalid polygon coordinates for: ${name}`);
+      return null;
+    }
+
+    // Get outer ring coordinates (first array in polygon)
+    const outerRing = polygonCoords[0];
+
+    // Convert lat/lon coordinates to 3D points
+    const points = [];
+    const uvs = [];
+
+    // Calculate bounding box for UV mapping
+    let minLat = Infinity,
+      maxLat = -Infinity;
+    let minLon = Infinity,
+      maxLon = -Infinity;
+
+    outerRing.forEach((coord) => {
+      const [lon, lat] = coord;
+      minLat = Math.min(minLat, lat);
+      maxLat = Math.max(maxLat, lat);
+      minLon = Math.min(minLon, lon);
+      maxLon = Math.max(maxLon, lon);
+    });
+
+    // Create triangulated shape for the country
+    const shape = new THREE.Shape();
+    let first = true;
+
+    outerRing.forEach((coord, index) => {
+      const [lon, lat] = coord;
+
+      // Convert to 3D position on sphere
+      const pos3D = latLonToVector3(lat, lon, 2.005); // Slightly above earth surface
+      points.push(pos3D);
+
+      // Calculate UV coordinates based on bounding box
+      const u = (lon - minLon) / (maxLon - minLon);
+      const v = (lat - minLat) / (maxLat - minLat);
+      uvs.push(new THREE.Vector2(u, v));
+
+      // Create 2D shape for triangulation (using lat/lon as 2D coordinates)
+      if (first) {
+        shape.moveTo(lon, lat);
+        first = false;
+      } else {
+        shape.lineTo(lon, lat);
+      }
+    });
+
+    // Create geometry from shape
+    const shapeGeometry = new THREE.ShapeGeometry(shape);
+
+    // Replace positions with 3D sphere positions
+    const positions = new Float32Array(points.length * 3);
+    const uvArray = new Float32Array(points.length * 2);
+
+    points.forEach((point, i) => {
+      positions[i * 3] = point.x;
+      positions[i * 3 + 1] = point.y;
+      positions[i * 3 + 2] = point.z;
+
+      uvArray[i * 2] = uvs[i].x;
+      uvArray[i * 2 + 1] = uvs[i].y;
+    });
+
+    shapeGeometry.setAttribute(
+      "position",
+      new THREE.BufferAttribute(positions, 3)
+    );
+    shapeGeometry.setAttribute("uv", new THREE.BufferAttribute(uvArray, 2));
+    shapeGeometry.computeVertexNormals();
+
+    // Create material
+    let material;
     if (flagTexture) {
-      flagMaterial = new THREE.MeshBasicMaterial({
+      material = new THREE.MeshBasicMaterial({
         map: flagTexture,
         transparent: true,
-        opacity: 0.9,
+        opacity: 1.0, // Full opacity for testing
         side: THREE.DoubleSide,
+        alphaTest: 0.1,
       });
     } else {
-      // Fallback material if flag texture fails to load
-      flagMaterial = new THREE.MeshBasicMaterial({
-        color: 0xff6b6b,
+      // Fallback material with country highlight color - make it more visible
+      material = new THREE.MeshBasicMaterial({
+        color: new THREE.Color("#00ff00"), // Bright green for testing
         transparent: true,
-        opacity: 0.8,
+        opacity: 1.0, // Full opacity for testing
         side: THREE.DoubleSide,
       });
     }
 
-    // Create flag mesh
-    const flagMesh = new THREE.Mesh(flagGeometry, flagMaterial);
+    // Create mesh
+    const mesh = new THREE.Mesh(shapeGeometry, material);
+    mesh.userData = { type: "flagPolygon", name };
+    
+    console.log(`[Polygon Mesh] Created mesh for ${name}:`, mesh);
+    console.log(`[Polygon Mesh] Mesh geometry vertices:`, mesh.geometry.attributes.position?.count);
+    console.log(`[Polygon Mesh] Mesh material:`, mesh.material);
 
-    // Position the flag at the country center
-    flagMesh.position.copy(flagPosition);
-
-    // Make the flag face the camera
-    flagMesh.lookAt(cameraRef.current.position);
-
-    // Add some rotation for a more natural look
-    flagMesh.rotateZ(Math.random() * 0.2 - 0.1);
-
-    // Store reference for cleanup
-    flagMesh.userData = { type: "countryFlag", countryName };
-
-    // Add flag directly to scene for now - it will be cleaned up by clearCountryHighlight
-    sceneRef.current.add(flagMesh);
-
-    // Add subtle animation to the flag
-    const animateFlag = () => {
-      if (flagMesh.parent) {
-        const time = Date.now() * 0.001;
-        flagMesh.rotation.x = Math.sin(time * 0.5) * 0.1;
-        flagMesh.rotation.y = Math.sin(time * 0.3) * 0.05;
-        requestAnimationFrame(animateFlag);
-      }
-    };
-    animateFlag();
-
-    console.log(`Flag displayed for ${countryName} at position:`, flagPosition);
+    return mesh;
   };
 
   // --- Auto-Animation Functions ---
