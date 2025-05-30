@@ -1,0 +1,114 @@
+[
+  {
+    "name": "Portugal",
+    "code": "PRT",
+    "rank": 4,
+    "label": "Visa Free score",
+    "score": 191
+  },
+  {
+    "name": "Luxembourg",
+    "code": "LUX",
+    "rank": 4,
+    "label": "Visa Free score",
+    "score": 191
+  },
+  {
+    "name": "Belgium",
+    "code": "BEL",
+    "rank": 4,
+    "label": "Visa Free score",
+    "score": 191
+  },
+  {
+    "name": "Netherlands",
+    "code": "NLD",
+    "rank": 3,
+    "label": "Visa Free score",
+    "score": 192
+  },
+  {
+    "name": "Ireland",
+    "code": "IRL",
+    "rank": 3,
+    "label": "Visa Free score",
+    "score": 192
+  },
+  {
+    "name": "Denmark",
+    "code": "DNK",
+    "rank": 3,
+    "label": "Visa Free score",
+    "score": 192
+  },
+  {
+    "name": "Austria",
+    "code": "AUT",
+    "rank": 3,
+    "label": "Visa Free score",
+    "score": 192
+  },
+  {
+    "name": "Sweden",
+    "code": "SWE",
+    "rank": 2,
+    "label": "Visa Free score",
+    "score": 193
+  },
+  {
+    "name": "Finland",
+    "code": "FIN",
+    "rank": 2,
+    "label": "Visa Free score",
+    "score": 193
+  },
+  {
+    "name": "South Korea",
+    "code": "KOR",
+    "rank": 2,
+    "label": "Visa Free score",
+    "score": 193
+  },
+  {
+    "name": "Spain",
+    "code": "ESP",
+    "rank": 1,
+    "label": "Visa Free score",
+    "score": 194
+  },
+  {
+    "name": "Singapore",
+    "code": "SGP",
+    "rank": 1,
+    "label": "Visa Free score",
+    "score": 194
+  },
+  {
+    "name": "Japan",
+    "code": "JPN",
+    "rank": 1,
+    "label": "Visa Free score",
+    "score": 194
+  },
+  {
+    "name": "Italy",
+    "code": "ITA",
+    "rank": 1,
+    "label": "Visa Free score",
+    "score": 194
+  },
+  {
+    "name": "Germany",
+    "code": "DEU",
+    "rank": 1,
+    "label": "Visa Free score",
+    "score": 194
+  },
+  {
+    "name": "France",
+    "code": "FRA",
+    "rank": 1,
+    "label": "Visa Free score",
+    "score": 194
+  }
+]
