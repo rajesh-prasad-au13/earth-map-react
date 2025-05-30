@@ -19,6 +19,10 @@ export function useThreeJS(containerRef) {
 
   // State for camera movement (local state)
   const [isCameraMoving, setIsCameraMoving] = useState(false);
+  const [shouldTriggerBorderAnimation, setShouldTriggerBorderAnimation] =
+    useState(false);
+  const [borderAnimationTriggered, setBorderAnimationTriggered] =
+    useState(false);
 
   // Use showFlags from context instead of local state
   const showFlags = state.countries.showFlags;
@@ -1227,15 +1231,19 @@ export function useThreeJS(containerRef) {
       targetPosition
     );
 
-    const cameraOffset = targetPosition
+    // Calculate final camera position based on direction from origin to target
+    const targetDirection = targetPosition.clone().normalize();
+    const cameraPosition = targetDirection
       .clone()
-      .normalize()
       .multiplyScalar(COUNTRY_VIEW_ZOOM_DISTANCE);
 
     console.log(`[Auto-Animation] Animating camera to ${country.name}`);
 
-    // Animate camera to country
-    animateCameraToPosition(cameraOffset, targetPosition, () => {
+    // Reset border animation trigger state for new animation
+    resetBorderAnimationTrigger();
+
+    // Animate camera to country with improved multi-phase movement
+    animateCameraToPosition(cameraPosition, targetPosition, () => {
       console.log(
         `[Auto-Animation] Camera animation complete for ${country.name}, waiting ${state.animation.timeToWaitForHighlightedCountry}ms`
       );
@@ -1276,37 +1284,309 @@ export function useThreeJS(containerRef) {
     const controls = controlsRef.current;
 
     setIsAnimating(true);
+    setIsCameraMoving(true);
 
-    // Use a simple linear interpolation for camera movement
+    // Store starting positions
     const startPosition = camera.position.clone();
     const startTarget = controls.target.clone();
 
-    const duration = 4000; // 4 seconds for camera movement
+    // Get current distance from origin
+    const currentDistance = startPosition.length();
+
+    // Determine which animation mode to use based on current camera state
+    const isInitialMovement =
+      Math.abs(currentDistance - INITIAL_ZOOM_DISTANCE) < 10;
+    const hasPreviousFocus = state.camera.previousCameraPosition !== null;
+
+    // Get final target direction
+    const finalDirection = cameraPosition.clone().normalize();
+
+    // Calculate angular distance for duration
+    let angularDistance = 0;
+    if (hasPreviousFocus) {
+      const prevDir = startPosition.clone().normalize();
+      angularDistance = prevDir.angleTo(finalDirection); // in radians
+    } else {
+      const startDir = startPosition.clone().normalize();
+      angularDistance = startDir.angleTo(finalDirection);
+    }
+
+    // Set a constant angular speed (radians per second)
+    const ANGULAR_SPEED = Math.PI / 2; // 90 degrees per second
+
+    // Calculate duration based on angular distance with a minimum
+    const MIN_DURATION = 4000; // 4 seconds minimum
+    const duration = Math.max(
+      (angularDistance / ANGULAR_SPEED) * 1000,
+      MIN_DURATION
+    );
+
+    console.log(
+      `[Camera Animation] Starting animation: angular distance=${(
+        (angularDistance * 180) /
+        Math.PI
+      ).toFixed(2)}° duration=${duration}ms`
+    );
+
     const startTime = Date.now();
+
+    // Helper easing function for smooth transitions
+    const easeInOutCubic = (t) =>
+      t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
     const animateFrame = () => {
       const elapsed = Date.now() - startTime;
       const progress = Math.min(elapsed / duration, 1);
+      const eased = easeInOutCubic(progress);
 
-      // Easing function (ease in-out)
-      const eased =
-        progress < 0.5
-          ? 2 * progress * progress
-          : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+      if (hasPreviousFocus) {
+        // COUNTRY-TO-COUNTRY TRAVEL MODE
+        if (progress < 0.25) {
+          // Phase 1: Zoom out from current country to travel distance
+          const normalizedT = progress / 0.25;
+          const easedT = easeInOutCubic(normalizedT);
+          const currentDirection = startPosition.clone().normalize();
+          const startDistance = startPosition.length();
+          const zoomOutDistance = THREE.MathUtils.lerp(
+            startDistance,
+            state.COUNTRY_TO_COUNTRY_ZOOM_DISTANCE,
+            easedT
+          );
+          camera.position.copy(
+            currentDirection.clone().multiplyScalar(zoomOutDistance)
+          );
+          console.log(
+            `[Camera Animation] Phase 1: Zoom Out to ${zoomOutDistance.toFixed(
+              2
+            )}`
+          );
 
-      // Interpolate camera position
-      camera.position.lerpVectors(startPosition, cameraPosition, eased);
+          // Trigger border animation when reaching target zoom distance
+          if (
+            Math.abs(
+              zoomOutDistance - state.COUNTRY_TO_COUNTRY_ZOOM_DISTANCE
+            ) <= 5
+          ) {
+            triggerBorderAnimationAtZoomDistance();
+          }
+        } else if (progress < 0.75) {
+          // Phase 2: Travel between countries at default zoomed out level
+          const normalizedT = (progress - 0.25) / 0.5;
+          const easedT = easeInOutCubic(normalizedT);
 
-      // Update controls target
-      controls.target.lerpVectors(startTarget, lookAtTarget, eased);
+          const startDirection = startPosition.clone().normalize();
+          const endDirection = finalDirection.clone();
+
+          // Use spherical interpolation for smooth arc path
+          const startQuat = new THREE.Quaternion().setFromUnitVectors(
+            new THREE.Vector3(0, 1, 0),
+            startDirection
+          );
+          const endQuat = new THREE.Quaternion().setFromUnitVectors(
+            new THREE.Vector3(0, 1, 0),
+            endDirection
+          );
+
+          const slerpedQuat = startQuat.clone().slerp(endQuat, easedT);
+          const journeyDirection = new THREE.Vector3(0, 1, 0).applyQuaternion(
+            slerpedQuat
+          );
+
+          // Travel at travel zoom distance
+          camera.position.copy(
+            journeyDirection.multiplyScalar(
+              state.COUNTRY_TO_COUNTRY_ZOOM_DISTANCE
+            )
+          );
+
+          // Interpolate target position as well
+          controls.target.lerpVectors(startTarget, lookAtTarget, easedT);
+          console.log(
+            `[Camera Animation] Phase 2: Travel at ${state.COUNTRY_TO_COUNTRY_ZOOM_DISTANCE}`
+          );
+
+          // Trigger border animation during travel phase
+          triggerBorderAnimationAtZoomDistance();
+        } else {
+          // Phase 3: Zoom in to destination country
+          const normalizedT = (progress - 0.75) / 0.25;
+          const easedT = easeInOutCubic(normalizedT);
+          const zoomInDistance = THREE.MathUtils.lerp(
+            state.COUNTRY_TO_COUNTRY_ZOOM_DISTANCE,
+            COUNTRY_VIEW_ZOOM_DISTANCE,
+            easedT
+          );
+          camera.position.copy(
+            finalDirection.clone().multiplyScalar(zoomInDistance)
+          );
+          controls.target.copy(lookAtTarget);
+          console.log(
+            `[Camera Animation] Phase 3: Zoom In to ${zoomInDistance.toFixed(
+              2
+            )}`
+          );
+        }
+      } else if (isInitialMovement) {
+        // INITIAL MOVEMENT FROM STARTUP POSITION
+        if (progress < 0.33) {
+          // Phase 1: Smooth zoom out from initial distance to travel distance
+          const normalizedT = progress / 0.33;
+          const easedT = easeInOutCubic(normalizedT);
+          const startDirection = startPosition.clone().normalize();
+          const zoomOutDistance = THREE.MathUtils.lerp(
+            INITIAL_ZOOM_DISTANCE,
+            state.COUNTRY_TO_COUNTRY_ZOOM_DISTANCE,
+            easedT
+          );
+          camera.position.copy(
+            startDirection.clone().multiplyScalar(zoomOutDistance)
+          );
+          console.log(
+            `[Camera Animation] Initial Phase 1: Zoom Out to ${zoomOutDistance.toFixed(
+              2
+            )}`
+          );
+
+          // Trigger border animation when reaching target zoom distance
+          if (
+            Math.abs(
+              zoomOutDistance - state.COUNTRY_TO_COUNTRY_ZOOM_DISTANCE
+            ) <= 5
+          ) {
+            triggerBorderAnimationAtZoomDistance();
+          }
+        } else if (progress < 0.67) {
+          // Phase 2: Travel to target direction at travel distance
+          const normalizedT = (progress - 0.33) / 0.34;
+          const easedT = easeInOutCubic(normalizedT);
+          const startDirection = startPosition.clone().normalize();
+
+          const startQuat = new THREE.Quaternion().setFromUnitVectors(
+            new THREE.Vector3(0, 1, 0),
+            startDirection
+          );
+          const targetQuat = new THREE.Quaternion().setFromUnitVectors(
+            new THREE.Vector3(0, 1, 0),
+            finalDirection
+          );
+
+          const slerpedQuat = startQuat.clone().slerp(targetQuat, easedT);
+          const interpolatedDirection = new THREE.Vector3(
+            0,
+            1,
+            0
+          ).applyQuaternion(slerpedQuat);
+
+          camera.position.copy(
+            interpolatedDirection
+              .clone()
+              .multiplyScalar(state.COUNTRY_TO_COUNTRY_ZOOM_DISTANCE)
+          );
+
+          // Interpolate target
+          controls.target.lerpVectors(startTarget, lookAtTarget, easedT);
+          console.log(
+            `[Camera Animation] Initial Phase 2: Travel at ${state.COUNTRY_TO_COUNTRY_ZOOM_DISTANCE}`
+          );
+
+          // Trigger border animation during travel phase
+          triggerBorderAnimationAtZoomDistance();
+        } else {
+          // Phase 3: Zoom in to country level
+          const normalizedT = (progress - 0.67) / 0.33;
+          const easedT = easeInOutCubic(normalizedT);
+          const zoomInDistance = THREE.MathUtils.lerp(
+            state.COUNTRY_TO_COUNTRY_ZOOM_DISTANCE,
+            COUNTRY_VIEW_ZOOM_DISTANCE,
+            easedT
+          );
+          camera.position.copy(
+            finalDirection.clone().multiplyScalar(zoomInDistance)
+          );
+          controls.target.copy(lookAtTarget);
+          console.log(
+            `[Camera Animation] Initial Phase 3: Zoom In to ${zoomInDistance.toFixed(
+              2
+            )}`
+          );
+        }
+      } else {
+        // DIRECT MOVEMENT (after manual interaction)
+        if (progress < 0.5) {
+          // Phase 1: Move to target direction at default distance
+          const normalizedT = progress / 0.5;
+          const easedT = easeInOutCubic(normalizedT);
+          const startDirection = startPosition.clone().normalize();
+
+          const startQuat = new THREE.Quaternion().setFromUnitVectors(
+            new THREE.Vector3(0, 1, 0),
+            startDirection
+          );
+          const targetQuat = new THREE.Quaternion().setFromUnitVectors(
+            new THREE.Vector3(0, 1, 0),
+            finalDirection
+          );
+
+          const slerpedQuat = startQuat.clone().slerp(targetQuat, easedT);
+          const interpolatedDirection = new THREE.Vector3(
+            0,
+            1,
+            0
+          ).applyQuaternion(slerpedQuat);
+
+          camera.position.copy(
+            interpolatedDirection
+              .clone()
+              .multiplyScalar(state.COUNTRY_TO_COUNTRY_ZOOM_DISTANCE)
+          );
+
+          // Interpolate target
+          controls.target.lerpVectors(startTarget, lookAtTarget, easedT);
+          console.log(
+            `[Camera Animation] Direct Phase 1: Travel at ${state.COUNTRY_TO_COUNTRY_ZOOM_DISTANCE}`
+          );
+
+          // Trigger border animation during travel phase
+          triggerBorderAnimationAtZoomDistance();
+        } else {
+          // Phase 2: Zoom in to country level
+          const normalizedT = (progress - 0.5) / 0.5;
+          const easedT = easeInOutCubic(normalizedT);
+          const zoomInDistance = THREE.MathUtils.lerp(
+            state.COUNTRY_TO_COUNTRY_ZOOM_DISTANCE,
+            COUNTRY_VIEW_ZOOM_DISTANCE,
+            easedT
+          );
+          camera.position.copy(
+            finalDirection.clone().multiplyScalar(zoomInDistance)
+          );
+          controls.target.copy(lookAtTarget);
+          console.log(
+            `[Camera Animation] Direct Phase 2: Zoom In to ${zoomInDistance.toFixed(
+              2
+            )}`
+          );
+        }
+      }
+
       controls.update();
 
       if (progress < 1) {
         requestAnimationFrame(animateFrame);
       } else {
+        // Ensure camera is at exact final position when animation completes
+        camera.position.copy(cameraPosition);
+        controls.target.copy(lookAtTarget);
+        controls.update();
+
+        // Store the current position for the next country transition
+        dispatch(actions.setPreviousCameraPosition(camera.position.clone()));
+
         setIsAnimating(false);
+        setIsCameraMoving(false);
+
         console.log(
-          `[Camera Animation] Camera animation completed, calling callback`
+          `[Camera Animation] Animation completed, camera at ${COUNTRY_VIEW_ZOOM_DISTANCE}`
         );
         if (callback) callback();
       }
@@ -1504,6 +1784,49 @@ export function useThreeJS(containerRef) {
       }
     }
   }, [sceneRef.current, rendererRef.current]);
+
+  // Reset border animation trigger state for new animations
+  const resetBorderAnimationTrigger = () => {
+    setBorderAnimationTriggered(false);
+    setShouldTriggerBorderAnimation(true);
+  };
+
+  // Function to trigger border animation when camera reaches COUNTRY_TO_COUNTRY_ZOOM_DISTANCE
+  const triggerBorderAnimationAtZoomDistance = () => {
+    // If there's no selected country, animation already triggered, or we shouldn't trigger it
+    if (
+      !selectedCountry ||
+      borderAnimationTriggered ||
+      !shouldTriggerBorderAnimation
+    ) {
+      return;
+    }
+
+    const currentDistance = cameraRef.current.position.length();
+    const targetDistance = state.COUNTRY_TO_COUNTRY_ZOOM_DISTANCE;
+    const tolerance = 5; // Allow for small distance variations
+
+    // Check if camera is at or near the target zoom distance
+    if (Math.abs(currentDistance - targetDistance) <= tolerance) {
+      console.log(
+        `[Border Animation] Triggering border animation at zoom distance: ${currentDistance.toFixed(
+          2
+        )} (target: ${targetDistance})`
+      );
+
+      // Create animated border outline for the currently highlighted country
+      createAnimatedBorderOutline(selectedCountry);
+      setBorderAnimationTriggered(true);
+    }
+  };
+
+  // Placeholder for createAnimatedBorderOutline function (to be fully implemented later)
+  const createAnimatedBorderOutline = (countryFeature) => {
+    console.log(
+      `[Border Animation] Would create animated border for: ${countryFeature}`
+    );
+    // TODO: Implement full border animation system in next step
+  };
 
   // Return interaction state for use in components
   return {

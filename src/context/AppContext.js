@@ -9,6 +9,8 @@ const initialState = {
     zoom: 1,
     autoRotate: true,
     rotationSpeed: 0.01,
+    previousCameraPosition: null, // For tracking camera movements between countries
+    previousCountryCenter: null, // For tracking previous target positions
   },
 
   // Earth settings
@@ -62,7 +64,7 @@ const initialState = {
 
   // Zoom distance constants (from original implementation)
   INITIAL_ZOOM_DISTANCE: 350,
-  COUNTRY_VIEW_ZOOM_DISTANCE: 150,
+  COUNTRY_VIEW_ZOOM_DISTANCE: 110,
   COUNTRY_TO_COUNTRY_ZOOM_DISTANCE: 220,
 };
 
@@ -74,6 +76,8 @@ export const actionTypes = {
   SET_CAMERA_ZOOM: "SET_CAMERA_ZOOM",
   TOGGLE_AUTO_ROTATE: "TOGGLE_AUTO_ROTATE",
   SET_ROTATION_SPEED: "SET_ROTATION_SPEED",
+  SET_PREVIOUS_CAMERA_POSITION: "SET_PREVIOUS_CAMERA_POSITION",
+  SET_PREVIOUS_COUNTRY_CENTER: "SET_PREVIOUS_COUNTRY_CENTER",
 
   // Earth actions
   TOGGLE_EARTH_VISIBILITY: "TOGGLE_EARTH_VISIBILITY",
@@ -150,6 +154,18 @@ function appReducer(state, action) {
       return {
         ...state,
         camera: { ...state.camera, rotationSpeed: action.payload },
+      };
+
+    case actionTypes.SET_PREVIOUS_CAMERA_POSITION:
+      return {
+        ...state,
+        camera: { ...state.camera, previousCameraPosition: action.payload },
+      };
+
+    case actionTypes.SET_PREVIOUS_COUNTRY_CENTER:
+      return {
+        ...state,
+        camera: { ...state.camera, previousCountryCenter: action.payload },
       };
 
     // Earth actions
@@ -442,6 +458,16 @@ export const actions = {
   setRotationSpeed: (speed) => ({
     type: actionTypes.SET_ROTATION_SPEED,
     payload: speed,
+  }),
+
+  setPreviousCameraPosition: (position) => ({
+    type: actionTypes.SET_PREVIOUS_CAMERA_POSITION,
+    payload: position,
+  }),
+
+  setPreviousCountryCenter: (center) => ({
+    type: actionTypes.SET_PREVIOUS_COUNTRY_CENTER,
+    payload: center,
   }),
 
   // Earth actions

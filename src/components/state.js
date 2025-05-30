@@ -42,7 +42,7 @@ export let flagAnimationType = "fade-in";
 
 // Camera zoom configuration - easily configurable values
 export const INITIAL_ZOOM_DISTANCE = 350; // 1. Default initial zoom distance at the start of animation
-export const COUNTRY_VIEW_ZOOM_DISTANCE = 150; // 2. Zoom distance while viewing highlighted country
+export const COUNTRY_VIEW_ZOOM_DISTANCE = 120; // 2. Zoom distance while viewing highlighted country
 export const COUNTRY_TO_COUNTRY_ZOOM_DISTANCE = 220; // 3. Default zoom distance before going to next highlighted country (country to country travel)
 
 // Border styling settings

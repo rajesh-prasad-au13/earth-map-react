@@ -83,27 +83,6 @@ export default function EarthViewer() {
         </div>
       )}
 
-      {/* Animation Status */}
-      {isAnimating && (
-        <div
-          style={{
-            position: "absolute",
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-            background: "rgba(0, 0, 0, 0.7)",
-            color: "white",
-            padding: "10px 20px",
-            borderRadius: "20px",
-            fontSize: "14px",
-            fontFamily: "Arial, sans-serif",
-            zIndex: 1000,
-          }}
-        >
-          Animating to country...
-        </div>
-      )}
-
       {/* Settings Button */}
       <div
         style={{

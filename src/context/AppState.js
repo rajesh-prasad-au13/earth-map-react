@@ -45,7 +45,7 @@ const initialState = {
 
   // Camera zoom configuration
   INITIAL_ZOOM_DISTANCE: 350,
-  COUNTRY_VIEW_ZOOM_DISTANCE: 150,
+  COUNTRY_VIEW_ZOOM_DISTANCE: 110,
   COUNTRY_TO_COUNTRY_ZOOM_DISTANCE: 220,
 
   // Border styling settings
