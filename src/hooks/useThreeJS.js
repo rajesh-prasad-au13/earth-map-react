@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import ThreeGlobe from "three-globe";
 import { useAppContext, actions } from "../context/AppContext";
 import { topCountries } from "../data/topCountries";
 
@@ -30,6 +31,7 @@ export function useThreeJS(containerRef) {
   const cloudsMeshRef = useRef(null);
   const activeBorderOutlineRef = useRef(null);
   const flagLoadingTimeoutRef = useRef(null);
+  const globeRef = useRef(null); // For three-globe instance
 
   // Animation constants from centralized state
   const INITIAL_ZOOM_DISTANCE = state.INITIAL_ZOOM_DISTANCE / 70; // Scale down for our scene
@@ -179,6 +181,29 @@ export function useThreeJS(containerRef) {
     // Create the Earth mesh
     const earthMesh = new THREE.Mesh(earthGeometry, earthMaterial);
     scene.add(earthMesh);
+
+    // --- Three-Globe Setup for Flag Polygons ---
+    // Create a new ThreeGlobe instance
+    const globe = new ThreeGlobe();
+
+    // Configure the globe properties individually
+    globe.globeImageUrl("/Albedo.jpg");
+    globe.showGlobe(false); // Don't show the globe since we have our own earth mesh
+    globe.polygonsData([]);
+    globe.polygonCapColor(() => "rgba(0,0,0,0)");
+    globe.polygonSideColor(() => "rgba(0,0,0,0)");
+    globe.polygonStrokeColor(() => "rgba(0,0,0,0)");
+    globe.polygonAltitude(0.01);
+
+    // Position the globe to match our earth mesh
+    globe.rotation.y = -Math.PI / 2; // Align the globe data with our earth mesh
+    globe.scale.set(2, 2, 2); // Match earth mesh radius
+    scene.add(globe);
+
+    console.log("[Three-Globe] Globe object added to scene:", globe);
+
+    // Store reference
+    globeRef.current = globe;
 
     // Store references for cleanup and later access
     sceneRef.current = scene;
@@ -793,20 +818,36 @@ export function useThreeJS(containerRef) {
 
     // Schedule flag display after delay (last 4 seconds of highlight)
     const flagDelay = state.animation.timeToWaitForHighlightedCountry - 4000;
-    console.log(`[Highlight Country] Scheduling flag display for ${countryName} in ${flagDelay}ms`);
-    console.log(`[Highlight Country] Total wait time: ${state.animation.timeToWaitForHighlightedCountry}ms`);
-    
+    console.log(
+      `[Highlight Country] Scheduling flag display for ${countryName} in ${flagDelay}ms`
+    );
+    console.log(
+      `[Highlight Country] Total wait time: ${state.animation.timeToWaitForHighlightedCountry}ms`
+    );
+
     flagLoadingTimeoutRef.current = setTimeout(() => {
-      console.log(`[Highlight Country] Flag timeout triggered for ${countryName}`);
-      console.log(`[Highlight Country] Current selected country:`, selectedCountry);
+      console.log(
+        `[Highlight Country] Flag timeout triggered for ${countryName}`
+      );
+      console.log(
+        `[Highlight Country] Current selected country:`,
+        selectedCountry
+      );
       console.log(`[Highlight Country] Target country code:`, countryCode);
-      
+
       // Always display flag for the triggered country during auto-animation
-      if (isAutoAnimatingRef.current || selectedCountry?.countryCode === countryCode) {
-        console.log(`[Highlight Country] Calling displayCountryFlag for ${countryName}`);
+      if (
+        isAutoAnimatingRef.current ||
+        selectedCountry?.countryCode === countryCode
+      ) {
+        console.log(
+          `[Highlight Country] Calling displayCountryFlag for ${countryName}`
+        );
         displayCountryFlag(countryName, targetCountry);
       } else {
-        console.log(`[Highlight Country] Skipping flag display - not in auto-animation and country mismatch`);
+        console.log(
+          `[Highlight Country] Skipping flag display - not in auto-animation and country mismatch`
+        );
       }
     }, flagDelay);
 
@@ -820,6 +861,11 @@ export function useThreeJS(containerRef) {
     if (flagLoadingTimeoutRef.current) {
       clearTimeout(flagLoadingTimeoutRef.current);
       flagLoadingTimeoutRef.current = null;
+    }
+
+    // Clear globe polygons
+    if (globeRef.current) {
+      globeRef.current.polygonsData([]);
     }
 
     // Remove any existing border glow and flags
@@ -1057,12 +1103,14 @@ export function useThreeJS(containerRef) {
       (error) => {
         clearTimeout(flagLoadingTimeoutRef.current);
         flagLoadingTimeoutRef.current = null;
-        console.error(`[Flag Display] Could not load flag texture for ${countryName}:`);
+        console.error(
+          `[Flag Display] Could not load flag texture for ${countryName}:`
+        );
         console.error(`[Flag Display] Flag path attempted: ${flagPath}`);
         console.error(`[Flag Display] Error details:`, error);
         console.error(`[Flag Display] Error message:`, error.message);
         console.error(`[Flag Display] Error status:`, error.status);
-        
+
         // Still create highlight even without flag
         createFlagFilledCountry(countryFeature, null, countryName);
       }
@@ -1076,11 +1124,14 @@ export function useThreeJS(containerRef) {
   ) => {
     console.log(`[Flag Filled Country] Starting creation for: ${countryName}`);
     console.log(`[Flag Filled Country] Has flag texture:`, !!flagTexture);
-    console.log(`[Flag Filled Country] Country feature geometry type:`, countryFeature?.geometry?.type);
-    
-    if (!countryFeature || !countryFeature.geometry) {
+    console.log(
+      `[Flag Filled Country] Country feature geometry type:`,
+      countryFeature?.geometry?.type
+    );
+
+    if (!countryFeature || !countryFeature.geometry || !globeRef.current) {
       console.warn(
-        "[Flag Filled Country] No country feature for flag texture application"
+        "[Flag Filled Country] Missing country feature or globe instance"
       );
       return;
     }
@@ -1089,196 +1140,125 @@ export function useThreeJS(containerRef) {
       `[Flag Filled Country] Creating flag-filled country for: ${countryName}`
     );
 
-    // Extract coordinates from GeoJSON
-    const coordinates = countryFeature.geometry.coordinates;
-    const type = countryFeature.geometry.type;
+    // Create a polygon data object for three-globe
+    const polygonData = {
+      ...countryFeature,
+      flagTexture: flagTexture,
+      countryName: countryName,
+      isHighlighted: true,
+    };
 
-    if (!coordinates || !type) {
-      console.warn("[Flag Filled Country] Invalid country geometry");
-      return;
-    }
+    console.log(`[Flag Filled Country] Created polygon data:`, polygonData);
 
-    // Create a group to hold all country parts
-    const countryGroup = new THREE.Group();
-    countryGroup.userData = { type: "flagFilledCountry", countryName };
+    // Update globe with the flag polygon
+    globeRef.current.polygonsData([polygonData]);
+    console.log(1);
+    // Configure polygon rendering
+    if (flagTexture) {
+      console.log("i have flag texture, applying it to the country polygon");
+      // Create a material that directly references the texture
+      const materialWithTexture = new THREE.MeshBasicMaterial({
+        map: flagTexture,
+        transparent: true,
+        opacity: 0.9,
+        side: THREE.DoubleSide,
+      });
 
-    try {
-      if (type === "Polygon") {
-        const mesh = createCountryPolygonMesh(
-          coordinates,
-          flagTexture,
-          countryName
-        );
-        if (mesh) countryGroup.add(mesh);
-      } else if (type === "MultiPolygon") {
-        coordinates.forEach((polygonCoords, index) => {
-          const mesh = createCountryPolygonMesh(
-            polygonCoords,
-            flagTexture,
-            `${countryName}_${index}`
-          );
-          if (mesh) countryGroup.add(mesh);
-        });
-      }
-    } catch (error) {
-      console.error(
-        "[Flag Filled Country] Error creating country mesh:",
-        error
+      // Apply this material to the country polygon using the material property
+      globeRef.current.polygonCapMaterial(materialWithTexture);
+      console.log(
+        `[Flag Filled Country] Set polygon cap material with texture`
       );
-      return;
-    }
-
-    if (countryGroup.children.length === 0) {
-      console.warn("[Flag Filled Country] No valid meshes created");
-      return;
-    }
-
-    console.log(`[Flag Filled Country] Created ${countryGroup.children.length} meshes for ${countryName}`);
-
-    // Add the country group to the scene
-    sceneRef.current.add(countryGroup);
-    console.log(`[Flag Filled Country] Added country group to scene for ${countryName}`);
-
-    // Store reference for cleanup - add to existing border outline
-    if (!activeBorderOutlineRef.current) {
-      activeBorderOutlineRef.current = countryGroup;
     } else {
-      // If activeBorderOutlineRef is not a group, we need to handle it carefully
-      if (activeBorderOutlineRef.current.add) {
-        activeBorderOutlineRef.current.add(countryGroup);
-      } else {
-        // If it's an array or single object, convert to group
-        const existingObjects = Array.isArray(activeBorderOutlineRef.current)
-          ? activeBorderOutlineRef.current
-          : [activeBorderOutlineRef.current];
+      // For non-texture case, use a bright color for visibility
+      globeRef.current.polygonCapColor(() => {
+        console.log(`[Flag Filled Country] Using fallback color`);
+        return "#00ff00"; // Bright green
+      });
+    }
 
-        const newGroup = new THREE.Group();
-        existingObjects.forEach((obj) => {
-          if (obj && obj.parent) {
-            obj.parent.remove(obj);
-          }
-          if (obj) {
-            newGroup.add(obj);
-          }
-        });
-        newGroup.add(countryGroup);
-        activeBorderOutlineRef.current = newGroup;
-        sceneRef.current.add(newGroup);
-      }
+    globeRef.current.polygonSideColor((d) => {
+      return d.flagTexture ? "rgba(255,255,255,0.1)" : "rgba(0,255,0,0.1)";
+    });
+
+    globeRef.current.polygonStrokeColor((d) => {
+      return d.flagTexture ? "rgba(255,255,255,0.3)" : "rgba(0,255,0,0.3)";
+    });
+
+    globeRef.current.polygonAltitude((d) => {
+      return 0.01; // Slightly above surface
+    });
+
+    // Since polygonMaterial is not available, we need to find the polygon meshes and update them directly
+    if (flagTexture) {
+      console.log(
+        `[Flag Filled Country] Applying flag texture material for ${countryName}`
+      );
+
+      // Wait a short time for the 3D objects to be created
+      setTimeout(() => {
+        try {
+          // Find country polygons in the globe's children
+          const objects = globeRef.current.children || [];
+          console.log(
+            `[Flag Filled Country] Globe has ${objects.length} children`
+          );
+
+          // Look for polygon objects related to countries
+          objects.forEach((object) => {
+            // Look for polygon meshes or groups that might contain them
+            if (object.type === "Mesh" || object.type === "Group") {
+              console.log(
+                `[Flag Filled Country] Found object: ${object.type}`,
+                object
+              );
+
+              // If it's a mesh with material, apply texture directly
+              if (
+                object.material &&
+                object.userData &&
+                object.userData.__dataObj === polygonData
+              ) {
+                const material = new THREE.MeshBasicMaterial({
+                  map: flagTexture,
+                  transparent: true,
+                  opacity: 0.9,
+                  side: THREE.DoubleSide,
+                });
+                object.material = material;
+                object.material.needsUpdate = true;
+                console.log(
+                  `[Flag Filled Country] Applied flag texture to mesh directly`
+                );
+              }
+
+              // If it's a group, look for meshes inside
+              if (object.children) {
+                object.children.forEach((child) => {
+                  if (
+                    child.material &&
+                    child.userData &&
+                    child.userData.__dataObj === polygonData
+                  ) {
+                    child.material.map = flagTexture;
+                    child.material.needsUpdate = true;
+                    console.log(
+                      `[Flag Filled Country] Applied flag texture to child mesh`
+                    );
+                  }
+                });
+              }
+            }
+          });
+        } catch (err) {
+          console.error(`[Flag Filled Country] Error applying texture:`, err);
+        }
+      }, 100);
     }
 
     console.log(
       `[Flag Filled Country] Flag-filled country created for: ${countryName}`
     );
-  };
-
-  const createCountryPolygonMesh = (polygonCoords, flagTexture, name) => {
-    console.log(`[Polygon Mesh] Creating mesh for: ${name}`);
-    console.log(`[Polygon Mesh] Has flag texture:`, !!flagTexture);
-    
-    if (!polygonCoords || !polygonCoords[0] || polygonCoords[0].length < 3) {
-      console.warn(`[Polygon Mesh] Invalid polygon coordinates for: ${name}`);
-      return null;
-    }
-
-    // Get outer ring coordinates (first array in polygon)
-    const outerRing = polygonCoords[0];
-
-    // Convert lat/lon coordinates to 3D points
-    const points = [];
-    const uvs = [];
-
-    // Calculate bounding box for UV mapping
-    let minLat = Infinity,
-      maxLat = -Infinity;
-    let minLon = Infinity,
-      maxLon = -Infinity;
-
-    outerRing.forEach((coord) => {
-      const [lon, lat] = coord;
-      minLat = Math.min(minLat, lat);
-      maxLat = Math.max(maxLat, lat);
-      minLon = Math.min(minLon, lon);
-      maxLon = Math.max(maxLon, lon);
-    });
-
-    // Create triangulated shape for the country
-    const shape = new THREE.Shape();
-    let first = true;
-
-    outerRing.forEach((coord, index) => {
-      const [lon, lat] = coord;
-
-      // Convert to 3D position on sphere
-      const pos3D = latLonToVector3(lat, lon, 2.005); // Slightly above earth surface
-      points.push(pos3D);
-
-      // Calculate UV coordinates based on bounding box
-      const u = (lon - minLon) / (maxLon - minLon);
-      const v = (lat - minLat) / (maxLat - minLat);
-      uvs.push(new THREE.Vector2(u, v));
-
-      // Create 2D shape for triangulation (using lat/lon as 2D coordinates)
-      if (first) {
-        shape.moveTo(lon, lat);
-        first = false;
-      } else {
-        shape.lineTo(lon, lat);
-      }
-    });
-
-    // Create geometry from shape
-    const shapeGeometry = new THREE.ShapeGeometry(shape);
-
-    // Replace positions with 3D sphere positions
-    const positions = new Float32Array(points.length * 3);
-    const uvArray = new Float32Array(points.length * 2);
-
-    points.forEach((point, i) => {
-      positions[i * 3] = point.x;
-      positions[i * 3 + 1] = point.y;
-      positions[i * 3 + 2] = point.z;
-
-      uvArray[i * 2] = uvs[i].x;
-      uvArray[i * 2 + 1] = uvs[i].y;
-    });
-
-    shapeGeometry.setAttribute(
-      "position",
-      new THREE.BufferAttribute(positions, 3)
-    );
-    shapeGeometry.setAttribute("uv", new THREE.BufferAttribute(uvArray, 2));
-    shapeGeometry.computeVertexNormals();
-
-    // Create material
-    let material;
-    if (flagTexture) {
-      material = new THREE.MeshBasicMaterial({
-        map: flagTexture,
-        transparent: true,
-        opacity: 1.0, // Full opacity for testing
-        side: THREE.DoubleSide,
-        alphaTest: 0.1,
-      });
-    } else {
-      // Fallback material with country highlight color - make it more visible
-      material = new THREE.MeshBasicMaterial({
-        color: new THREE.Color("#00ff00"), // Bright green for testing
-        transparent: true,
-        opacity: 1.0, // Full opacity for testing
-        side: THREE.DoubleSide,
-      });
-    }
-
-    // Create mesh
-    const mesh = new THREE.Mesh(shapeGeometry, material);
-    mesh.userData = { type: "flagPolygon", name };
-    
-    console.log(`[Polygon Mesh] Created mesh for ${name}:`, mesh);
-    console.log(`[Polygon Mesh] Mesh geometry vertices:`, mesh.geometry.attributes.position?.count);
-    console.log(`[Polygon Mesh] Mesh material:`, mesh.material);
-
-    return mesh;
   };
 
   // --- Auto-Animation Functions ---
