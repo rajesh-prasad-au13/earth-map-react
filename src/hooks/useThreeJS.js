@@ -1513,39 +1513,77 @@ const calculateCountryCentroid = (feature) => {
   console.log(`[Centroid] Calculating polylabel centroid for: ${countryName}`);
 
   try {
-    let largestPolygon = null;
-    let maxArea = 0;
+    let targetPolygon = null;
 
     if (feature.geometry.type === "Polygon") {
       // For simple polygon, use the outer ring
-      largestPolygon = feature.geometry.coordinates[0];
+      targetPolygon = feature.geometry.coordinates[0];
+      console.log(`[Centroid] Processing simple Polygon for ${countryName}`);
     } else if (feature.geometry.type === "MultiPolygon") {
-      // For multipolygon, find the largest polygon by area
-      feature.geometry.coordinates.forEach((polygon) => {
+      console.log(
+        `[Centroid] Processing MultiPolygon for ${countryName} with ${feature.geometry.coordinates.length} polygons`
+      );
+
+      // For MultiPolygon, find the largest polygon by bounding box area (matches reference implementation)
+      let maxArea = 0;
+      let largestPolygon = null;
+      let polygonIndex = 0;
+
+      feature.geometry.coordinates.forEach((polygon, index) => {
         const coords = polygon[0]; // outer ring
 
-        // Calculate area using shoelace formula
-        let area = 0;
-        for (let i = 0; i < coords.length - 1; i++) {
-          area += Math.abs(
-            coords[i][0] * coords[i + 1][1] - coords[i + 1][0] * coords[i][1]
+        if (!coords || coords.length < 4) {
+          console.warn(
+            `[Centroid] Skipping invalid polygon ${index} for ${countryName}`
           );
+          return;
         }
+
+        // Calculate approximate area using bounding box (matches reference implementation)
+        let minX = Infinity,
+          maxX = -Infinity,
+          minY = Infinity,
+          maxY = -Infinity;
+
+        coords.forEach(([lng, lat]) => {
+          minX = Math.min(minX, lng);
+          maxX = Math.max(maxX, lng);
+          minY = Math.min(minY, lat);
+          maxY = Math.max(maxY, lat);
+        });
+
+        const area = (maxX - minX) * (maxY - minY);
+
+        console.log(
+          `[Centroid] Polygon ${index}: bounding box area=${area.toFixed(4)}`
+        );
 
         if (area > maxArea) {
           maxArea = area;
           largestPolygon = coords;
+          polygonIndex = index;
+          console.log(
+            `[Centroid] New largest polygon ${index} for ${countryName} with area ${area.toFixed(
+              4
+            )}`
+          );
         }
       });
+
+      targetPolygon = largestPolygon;
     }
 
-    if (!largestPolygon || largestPolygon.length < 3) {
+    if (!targetPolygon || targetPolygon.length < 3) {
       console.warn(`[Centroid] No valid polygon found for ${countryName}`);
       return { lat: 0, lng: 0 };
     }
 
+    console.log(
+      `[Centroid] Using polygon with ${targetPolygon.length} points for ${countryName}`
+    );
+
     // Use polylabel to find the pole of inaccessibility (visual center)
-    const centroidPoint = polylabel([largestPolygon], 1.0);
+    const centroidPoint = polylabel([targetPolygon], 1.0);
     const [lng, lat] = centroidPoint;
 
     console.log(
