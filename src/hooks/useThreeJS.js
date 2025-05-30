@@ -148,13 +148,17 @@ export function useThreeJS(containerRef) {
 
     // --- Lighting ---
     // Main directional light that will follow the camera (like the sun)
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5); // Increased intensity
     // Initial position will be updated in animation loop
     directionalLight.position.set(
       camera.position.x,
       camera.position.y,
       camera.position.z
     );
+    // Create and add a target for the directional light
+    directionalLight.target = new THREE.Object3D();
+    directionalLight.target.position.set(0, 0, 0);
+    scene.add(directionalLight.target);
     scene.add(directionalLight);
 
     // Slightly offset additional light to soften shadows and create more balanced lighting
@@ -375,16 +379,28 @@ export function useThreeJS(containerRef) {
       controls.autoRotateSpeed = state.camera.rotationSpeed * 10; // Scale to reasonable speed
 
       // Update directional light to follow camera position
-      // Offset it slightly to create better illumination angle
-      const lightOffset = 2; // Distance the light is positioned from camera
-      directionalLight.position
-        .copy(camera.position)
-        .normalize()
-        .multiplyScalar(lightOffset);
+      // Position the light to come from the camera's direction but from further out
+      // This creates a sun-like effect that follows the viewer's perspective
+      const lightOffset = 500; // Large distance for more parallel light rays (sun-like)
 
-      // Optional: Add slight upward bias to the light for more realistic sun-like illumination
-      directionalLight.position.y += 0.5;
+      // Copy camera position first
+      directionalLight.position.copy(camera.position);
+
+      // Set target to the center of the scene (origin)
+      directionalLight.target.position.set(0, 0, 0);
+
+      // Position light further away in same direction
       directionalLight.position.normalize().multiplyScalar(lightOffset);
+
+      // Optional: Add slight upward/sideways bias for more interesting shadows
+      directionalLight.position.y += lightOffset * 0.2; // 20% upward bias
+      directionalLight.position.x += lightOffset * 0.1; // 10% sideways bias
+
+      // Ensure light is still pointing at the origin/earth
+      directionalLight.lookAt(0, 0, 0);
+
+      // Update the light target
+      directionalLight.target.updateMatrixWorld();
 
       // Globe rotation - only if we're not auto-rotating with controls
       if (globeRef.current && !state.camera.autoRotate) {
@@ -1265,7 +1281,7 @@ export function useThreeJS(containerRef) {
     const startPosition = camera.position.clone();
     const startTarget = controls.target.clone();
 
-    const duration = 2000; // 2 seconds for camera movement
+    const duration = 4000; // 4 seconds for camera movement
     const startTime = Date.now();
 
     const animateFrame = () => {
