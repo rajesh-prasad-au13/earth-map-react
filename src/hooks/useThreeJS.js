@@ -30,6 +30,10 @@ export function useThreeJS(containerRef) {
   // Add a ref to track auto-animation state more reliably
   const isAutoAnimatingRef = useRef(false);
 
+  // Add a ref to prevent double camera animations
+  const isCameraAnimatingRef = useRef(false);
+  const currentAnimationIdRef = useRef(null);
+
   // Refs for Three.js objects that need to persist
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
@@ -832,6 +836,14 @@ export function useThreeJS(containerRef) {
     console.log(`[Flag Filled Country] Starting creation for: ${countryName}`);
     console.log(`[Flag Filled Country] Has flag texture:`, !!flagTexture);
     console.log(
+      `[Flag Filled Country] Camera currently animating:`,
+      isCameraAnimatingRef.current
+    );
+    console.log(
+      `[Flag Filled Country] Current animation ID:`,
+      currentAnimationIdRef.current
+    );
+    console.log(
       `[Flag Filled Country] Country feature geometry type:`,
       countryFeature?.geometry?.type
     );
@@ -1147,6 +1159,8 @@ export function useThreeJS(containerRef) {
       }: ${country.name}`
     );
 
+    logCameraPosition(`Start of animateToCountry for ${country.name}`);
+
     if (!geojsonCountriesData) {
       console.warn("[Auto-Animation] GeoJSON data not loaded yet");
       // Try again after a short delay
@@ -1187,14 +1201,7 @@ export function useThreeJS(containerRef) {
     console.log(`[Auto-Animation] Highlighting country: ${country.name}`);
 
     // Log current camera position before animation
-    if (cameraRef.current) {
-      const currentCameraDistance = cameraRef.current.position.length();
-      console.log(
-        `[Auto-Animation] Current camera distance before animation: ${currentCameraDistance.toFixed(
-          2
-        )}`
-      );
-    }
+    logCameraPosition(`Before animating to ${country.name}`);
 
     highlightCountry(country.code, country.name);
 
@@ -1280,6 +1287,7 @@ export function useThreeJS(containerRef) {
         );
 
         if (isAutoAnimatingRef.current) {
+          logCameraPosition("Before moving to next country");
           console.log(
             `[Auto-Animation] Moving to next country after ${country.name}`
           );
@@ -1301,6 +1309,21 @@ export function useThreeJS(containerRef) {
   ) => {
     if (!cameraRef.current || !controlsRef.current) return;
 
+    // Prevent double animations by checking if one is already in progress
+    if (isCameraAnimatingRef.current) {
+      console.log(
+        "[Camera Animation] Blocking duplicate animation - one already in progress"
+      );
+      return;
+    }
+
+    // Set animation flag and create unique animation ID
+    isCameraAnimatingRef.current = true;
+    const animationId = Date.now() + Math.random();
+    currentAnimationIdRef.current = animationId;
+
+    console.log(`[Camera Animation] Starting animation ${animationId}`);
+
     const camera = cameraRef.current;
     const controls = controlsRef.current;
 
@@ -1314,6 +1337,8 @@ export function useThreeJS(containerRef) {
     const startPosition = camera.position.clone();
     const startTarget = controls.target.clone();
     const startDistance = startPosition.length();
+
+    logCameraPosition("Animation function start");
 
     // Final target position and distance
     const finalDirection = cameraPosition.clone().normalize();
@@ -1376,6 +1401,14 @@ export function useThreeJS(containerRef) {
       t < 0.5 ? 8 * t * t * t * t : 1 - Math.pow(-2 * t + 2, 4) / 2;
 
     const animateFrame = () => {
+      // Check if this animation is still valid (not superseded by a new one)
+      if (currentAnimationIdRef.current !== animationId) {
+        console.log(
+          `[Camera Animation] Animation ${animationId} superseded, stopping`
+        );
+        return;
+      }
+
       const elapsed = Date.now() - startTime;
       const progress = Math.min(elapsed / duration, 1);
       const eased = easeInOutQuart(progress);
@@ -1533,11 +1566,13 @@ export function useThreeJS(containerRef) {
         triggerBorderAnimationAtZoomDistance();
       }
 
-      console.log(
-        `[Camera Animation] Projectile motion: progress=${(
-          progress * 100
-        ).toFixed(1)}%, distance=${currentDistance.toFixed(2)}`
-      );
+      setInterval(() => {
+        console.log(
+          `[Camera Animation] Projectile motion: progress=${(
+            progress * 100
+          ).toFixed(1)}%, distance=${currentDistance.toFixed(2)}`
+        );
+      }, 10000);
 
       if (progress < 1) {
         requestAnimationFrame(animateFrame);
@@ -1581,11 +1616,22 @@ export function useThreeJS(containerRef) {
         setIsAnimating(false);
         setIsCameraMoving(false);
 
+        // Clear animation flags to allow future animations
+        isCameraAnimatingRef.current = false;
+        currentAnimationIdRef.current = null;
+
+        console.log(
+          `[Camera Animation] Animation ${animationId} completed successfully`
+        );
+
         console.log(
           `[Camera Animation] Projectile motion completed, camera at distance ${camera.position
             .length()
             .toFixed(2)} (target: ${COUNTRY_VIEW_ZOOM_DISTANCE})`
         );
+
+        logCameraPosition("Animation function end");
+
         if (callback) callback();
       }
     };
@@ -1621,6 +1667,11 @@ export function useThreeJS(containerRef) {
   const stopAutoAnimation = () => {
     console.log("[Auto-Animation] Stopping auto-animation");
     isAutoAnimatingRef.current = false;
+
+    // Clear any ongoing camera animation flags to prevent stuck state
+    isCameraAnimatingRef.current = false;
+    currentAnimationIdRef.current = null;
+
     dispatch(actions.stopAutoAnimation());
   };
 
@@ -1824,6 +1875,21 @@ export function useThreeJS(containerRef) {
       `[Border Animation] Would create animated border for: ${countryFeature}`
     );
     // TODO: Implement full border animation system in next step
+  };
+
+  // Debug function to monitor camera position
+  const logCameraPosition = (context = "") => {
+    if (cameraRef.current) {
+      const pos = cameraRef.current.position;
+      const distance = pos.length();
+      console.log(
+        `[CAMERA DEBUG] ${context}: position(${pos.x.toFixed(
+          2
+        )}, ${pos.y.toFixed(2)}, ${pos.z.toFixed(
+          2
+        )}), distance=${distance.toFixed(2)}`
+      );
+    }
   };
 
   // Return interaction state for use in components
