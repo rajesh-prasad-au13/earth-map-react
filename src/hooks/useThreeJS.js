@@ -1322,7 +1322,9 @@ export function useThreeJS(containerRef) {
     const animationId = Date.now() + Math.random();
     currentAnimationIdRef.current = animationId;
 
-    console.log(`[Camera Animation] Starting animation ${animationId}`);
+    console.log(
+      `[Camera Animation] Starting simple zoom animation ${animationId}`
+    );
 
     const camera = cameraRef.current;
     const controls = controlsRef.current;
@@ -1338,70 +1340,39 @@ export function useThreeJS(containerRef) {
     const startTarget = controls.target.clone();
     const startDistance = startPosition.length();
 
-    logCameraPosition("Animation function start");
+    logCameraPosition("Simple animation start");
 
     // Final target position and distance
     const finalDirection = cameraPosition.clone().normalize();
-    const finalDistance = COUNTRY_VIEW_ZOOM_DISTANCE; // Use our desired final distance, not the passed one
+    const finalDistance = COUNTRY_VIEW_ZOOM_DISTANCE;
 
-    console.log(
-      `[Camera Animation] Smooth transition: from ${startDistance.toFixed(
-        2
-      )} to ${finalDistance.toFixed(2)}`
-    );
-
-    // Calculate path avoiding South Pole
-    const startDir = startPosition.clone().normalize();
-    const endDir = finalDirection.clone();
-
-    // Check if path would cross South Pole (y < -0.7)
-    const midPoint = startDir.clone().add(endDir).normalize();
-    const wouldCrossSouthPole = midPoint.y < -0.7;
-
-    // Calculate angular distance and optimal arc
-    const angularDistance = startDir.angleTo(endDir);
-
-    // Determine travel altitude for smooth projectile motion
-    const baseAltitude = Math.max(
-      startDistance,
-      state.COUNTRY_TO_COUNTRY_ZOOM_DISTANCE
-    );
-    const maxAltitude = baseAltitude + (angularDistance / Math.PI) * 100; // Higher arc for longer distances
-
-    console.log(
-      `[Camera Animation] Projectile calculation: startDistance=${startDistance.toFixed(
-        2
-      )}, baseAltitude=${baseAltitude.toFixed(
-        2
-      )}, maxAltitude=${maxAltitude.toFixed(2)}`
-    );
-
-    // Calculate duration based on distance and complexity
-    const MIN_DURATION = 3000;
-    const MAX_DURATION = 8000;
-    const baseDuration = (angularDistance / Math.PI) * 6000; // 6 seconds for 180 degrees
-    const duration = Math.max(
-      MIN_DURATION,
-      Math.min(MAX_DURATION, baseDuration)
+    // Simple zoom out distance for smooth transition
+    const zoomOutDistance = Math.max(
+      state.COUNTRY_TO_COUNTRY_ZOOM_DISTANCE,
+      startDistance + 50
     );
 
     console.log(
-      `[Camera Animation] Projectile motion: angular=${(
-        (angularDistance * 180) /
-        Math.PI
-      ).toFixed(2)}°, maxAltitude=${maxAltitude.toFixed(
+      `[Camera Animation] Simple zoom: start=${startDistance.toFixed(
         2
-      )}, duration=${duration}ms, avoidSouthPole=${wouldCrossSouthPole}`
+      )} -> zoom out=${zoomOutDistance.toFixed(
+        2
+      )} -> final=${finalDistance.toFixed(2)}`
     );
+
+    // Animation phases with durations
+    const ZOOM_OUT_DURATION = 1500; // 1.5 seconds to zoom out
+    const ZOOM_IN_DURATION = 1500; // 1.5 seconds to zoom in
+    const TOTAL_DURATION = ZOOM_OUT_DURATION + ZOOM_IN_DURATION;
 
     const startTime = Date.now();
 
-    // Enhanced easing for projectile motion
-    const easeInOutQuart = (t) =>
-      t < 0.5 ? 8 * t * t * t * t : 1 - Math.pow(-2 * t + 2, 4) / 2;
+    // Simple easing function
+    const easeInOutCubic = (t) =>
+      t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
     const animateFrame = () => {
-      // Check if this animation is still valid (not superseded by a new one)
+      // Check if this animation is still valid
       if (currentAnimationIdRef.current !== animationId) {
         console.log(
           `[Camera Animation] Animation ${animationId} superseded, stopping`
@@ -1410,178 +1381,86 @@ export function useThreeJS(containerRef) {
       }
 
       const elapsed = Date.now() - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      const eased = easeInOutQuart(progress);
+      const totalProgress = Math.min(elapsed / TOTAL_DURATION, 1);
 
-      // Smooth projectile motion with three phases
-      let currentDirection, currentDistance, targetProgress;
+      let currentDistance, currentDirection, currentTarget;
 
-      if (progress < 0.4) {
-        // Phase 1: Ascent (0% to 40% - smooth rise to maximum altitude)
-        const phaseProgress = progress / 0.4;
-        const altitudeEasing = easeInOutQuart(phaseProgress);
+      if (elapsed < ZOOM_OUT_DURATION) {
+        // Phase 1: Zoom out from current position
+        const phase1Progress = elapsed / ZOOM_OUT_DURATION;
+        const easedProgress = easeInOutCubic(phase1Progress);
 
-        // Interpolate direction with South Pole avoidance
-        let interpolatedDirection;
-        if (wouldCrossSouthPole) {
-          // Create an intermediate point that goes over the "top" of the globe
-          const intermediateDir = new THREE.Vector3(
-            (startDir.x + endDir.x) * 0.5,
-            Math.max(0.3, (startDir.y + endDir.y) * 0.5), // Ensure we go "over" not "under"
-            (startDir.z + endDir.z) * 0.5
-          ).normalize();
-
-          if (phaseProgress < 0.5) {
-            interpolatedDirection = startDir
-              .clone()
-              .lerp(intermediateDir, phaseProgress * 2);
-          } else {
-            interpolatedDirection = intermediateDir
-              .clone()
-              .lerp(endDir, (phaseProgress - 0.5) * 2);
-          }
-        } else {
-          // Use spherical interpolation for normal paths
-          const startQuat = new THREE.Quaternion().setFromUnitVectors(
-            new THREE.Vector3(0, 1, 0),
-            startDir
-          );
-          const endQuat = new THREE.Quaternion().setFromUnitVectors(
-            new THREE.Vector3(0, 1, 0),
-            endDir
-          );
-          const slerpedQuat = startQuat.clone().slerp(endQuat, phaseProgress);
-          interpolatedDirection = new THREE.Vector3(0, 1, 0).applyQuaternion(
-            slerpedQuat
-          );
-        }
-
-        // Smooth altitude rise
+        // Keep same direction, just zoom out
+        const startDirection = startPosition.clone().normalize();
         currentDistance = THREE.MathUtils.lerp(
           startDistance,
-          maxAltitude,
-          altitudeEasing
+          zoomOutDistance,
+          easedProgress
         );
-        currentDirection = interpolatedDirection.normalize();
-        targetProgress = phaseProgress * 0.3; // Slow target movement during ascent
-      } else if (progress < 0.7) {
-        // Phase 2: Arc travel (40% to 70% - maintain high altitude while traveling)
-        const phaseProgress = (progress - 0.4) / 0.3;
-        const travelEasing = easeInOutQuart(phaseProgress);
+        currentDirection = startDirection;
+        currentTarget = startTarget.clone();
 
-        // Continue directional interpolation at high altitude
-        let interpolatedDirection;
-        if (wouldCrossSouthPole) {
-          const intermediateDir = new THREE.Vector3(
-            (startDir.x + endDir.x) * 0.5,
-            Math.max(0.3, (startDir.y + endDir.y) * 0.5),
-            (startDir.z + endDir.z) * 0.5
-          ).normalize();
-
-          const totalProgress = 0.4 + phaseProgress * 0.6; // Map to overall 0.4-1.0 range
-          if (totalProgress < 0.5) {
-            interpolatedDirection = startDir
-              .clone()
-              .lerp(intermediateDir, totalProgress * 2);
-          } else {
-            interpolatedDirection = intermediateDir
-              .clone()
-              .lerp(endDir, (totalProgress - 0.5) * 2);
-          }
-        } else {
-          const startQuat = new THREE.Quaternion().setFromUnitVectors(
-            new THREE.Vector3(0, 1, 0),
-            startDir
-          );
-          const endQuat = new THREE.Quaternion().setFromUnitVectors(
-            new THREE.Vector3(0, 1, 0),
-            endDir
-          );
-          const overallProgress = 0.4 + phaseProgress * 0.3;
-          const slerpedQuat = startQuat.clone().slerp(endQuat, overallProgress);
-          interpolatedDirection = new THREE.Vector3(0, 1, 0).applyQuaternion(
-            slerpedQuat
-          );
-        }
-
-        currentDistance = maxAltitude; // Maintain high altitude
-        currentDirection = interpolatedDirection.normalize();
-        targetProgress = 0.3 + travelEasing * 0.4; // Moderate target movement during travel
-      } else {
-        // Phase 3: Descent (70% to 100% - smooth descent to final position)
-        const phaseProgress = (progress - 0.7) / 0.3;
-        const descentEasing = easeInOutQuart(phaseProgress);
-
-        // Final approach to target direction
-        let interpolatedDirection;
-        if (wouldCrossSouthPole) {
-          const intermediateDir = new THREE.Vector3(
-            (startDir.x + endDir.x) * 0.5,
-            Math.max(0.3, (startDir.y + endDir.y) * 0.5),
-            (startDir.z + endDir.z) * 0.5
-          ).normalize();
-
-          const totalProgress = 0.7 + phaseProgress * 0.3;
-          if (totalProgress < 0.5) {
-            interpolatedDirection = startDir
-              .clone()
-              .lerp(intermediateDir, totalProgress * 2);
-          } else {
-            interpolatedDirection = intermediateDir
-              .clone()
-              .lerp(endDir, (totalProgress - 0.5) * 2);
-          }
-        } else {
-          const startQuat = new THREE.Quaternion().setFromUnitVectors(
-            new THREE.Vector3(0, 1, 0),
-            startDir
-          );
-          const endQuat = new THREE.Quaternion().setFromUnitVectors(
-            new THREE.Vector3(0, 1, 0),
-            endDir
-          );
-          const overallProgress = 0.7 + phaseProgress * 0.3;
-          const slerpedQuat = startQuat.clone().slerp(endQuat, overallProgress);
-          interpolatedDirection = new THREE.Vector3(0, 1, 0).applyQuaternion(
-            slerpedQuat
-          );
-        }
-
-        // Smooth descent to final distance
-        currentDistance = THREE.MathUtils.lerp(
-          maxAltitude,
-          finalDistance,
-          descentEasing
-        );
-        currentDirection = interpolatedDirection.normalize();
-        targetProgress = 0.7 + descentEasing * 0.3; // Complete target movement during descent
-      }
-
-      // Apply position and target
-      camera.position.copy(currentDirection.multiplyScalar(currentDistance));
-      controls.target.lerpVectors(startTarget, lookAtTarget, targetProgress);
-
-      // Trigger border animation when at travel distance
-      if (currentDistance >= state.COUNTRY_TO_COUNTRY_ZOOM_DISTANCE - 10) {
-        triggerBorderAnimationAtZoomDistance();
-      }
-
-      setInterval(() => {
         console.log(
-          `[Camera Animation] Projectile motion: progress=${(
-            progress * 100
-          ).toFixed(1)}%, distance=${currentDistance.toFixed(2)}`
+          `[Camera Animation] Phase 1 (zoom out): ${(
+            phase1Progress * 100
+          ).toFixed(1)}% - distance: ${currentDistance.toFixed(2)}`
         );
-      }, 10000);
+      } else {
+        // Phase 2: Zoom in to target position
+        const phase2Progress = (elapsed - ZOOM_OUT_DURATION) / ZOOM_IN_DURATION;
+        const easedProgress = easeInOutCubic(phase2Progress);
 
-      if (progress < 1) {
+        // Interpolate direction and zoom in
+        const startDirection = startPosition.clone().normalize();
+
+        // Use spherical interpolation for smooth direction change
+        const startQuat = new THREE.Quaternion().setFromUnitVectors(
+          new THREE.Vector3(0, 1, 0),
+          startDirection
+        );
+        const endQuat = new THREE.Quaternion().setFromUnitVectors(
+          new THREE.Vector3(0, 1, 0),
+          finalDirection
+        );
+        const slerpedQuat = startQuat.clone().slerp(endQuat, easedProgress);
+        currentDirection = new THREE.Vector3(0, 1, 0).applyQuaternion(
+          slerpedQuat
+        );
+
+        // Zoom in from zoom out distance to final distance
+        currentDistance = THREE.MathUtils.lerp(
+          zoomOutDistance,
+          finalDistance,
+          easedProgress
+        );
+
+        // Interpolate target
+        currentTarget = startTarget.clone().lerp(lookAtTarget, easedProgress);
+
+        console.log(
+          `[Camera Animation] Phase 2 (zoom in): ${(
+            phase2Progress * 100
+          ).toFixed(1)}% - distance: ${currentDistance.toFixed(2)}`
+        );
+
+        // Trigger border animation when getting close to final position
+        if (phase2Progress > 0.8) {
+          triggerBorderAnimationAtZoomDistance();
+        }
+      }
+
+      // Apply the calculated position and target
+      camera.position.copy(currentDirection.multiplyScalar(currentDistance));
+      controls.target.copy(currentTarget);
+
+      if (totalProgress < 1) {
         requestAnimationFrame(animateFrame);
       } else {
-        // Ensure exact final position
+        // Animation complete - set final position precisely
         const originalMinDistance = controls.minDistance;
         controls.minDistance = 0;
 
-        // Set final position using our calculated direction and distance
+        // Set exact final position
         const finalCameraPosition = finalDirection
           .clone()
           .multiplyScalar(finalDistance);
@@ -1589,48 +1468,37 @@ export function useThreeJS(containerRef) {
         controls.target.copy(lookAtTarget);
         controls.update();
 
-        // Verify the position was actually set
+        // Verify final position
         const actualDistance = camera.position.length();
         console.log(
-          `[Camera Animation] Position verification: actual=${actualDistance.toFixed(
+          `[Camera Animation] Final position: actual=${actualDistance.toFixed(
             2
           )}, target=${finalDistance.toFixed(2)}`
         );
 
-        // If position wasn't set correctly, force it again
+        // Force position if needed
         if (Math.abs(actualDistance - finalDistance) > 1) {
-          console.log(
-            `[Camera Animation] Position mismatch detected, forcing position again`
-          );
+          console.log("[Camera Animation] Correcting final position");
           camera.position.copy(finalCameraPosition);
           camera.updateMatrixWorld(true);
         }
 
-        // Restore original constraints and re-enable controls
+        // Restore controls
         controls.minDistance = originalMinDistance;
         controls.enabled = true;
 
-        // Store the current position for the next country transition
+        // Store position and cleanup
         dispatch(actions.setPreviousCameraPosition(camera.position.clone()));
 
         setIsAnimating(false);
         setIsCameraMoving(false);
-
-        // Clear animation flags to allow future animations
         isCameraAnimatingRef.current = false;
         currentAnimationIdRef.current = null;
 
         console.log(
-          `[Camera Animation] Animation ${animationId} completed successfully`
+          `[Camera Animation] Simple zoom animation ${animationId} completed`
         );
-
-        console.log(
-          `[Camera Animation] Projectile motion completed, camera at distance ${camera.position
-            .length()
-            .toFixed(2)} (target: ${COUNTRY_VIEW_ZOOM_DISTANCE})`
-        );
-
-        logCameraPosition("Animation function end");
+        logCameraPosition("Simple animation end");
 
         if (callback) callback();
       }
