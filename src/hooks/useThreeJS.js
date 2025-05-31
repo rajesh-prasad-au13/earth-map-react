@@ -539,25 +539,36 @@ export function useThreeJS(containerRef) {
       flagLoadingTimeoutRef.current = null;
     }
 
-    // Reset all country polygons to default state instead of clearing them
+    // Reset highlighted country polygon to default state using targeted approach
     if (globeRef.current && geojsonCountriesData) {
-      const allCountryPolygons = geojsonCountriesData.features.map(
-        (feature) => {
-          const topCountry = topCountries.find(
-            (c) => c.code === feature.properties.ISO_A3
-          );
+      const currentPolygonData = globeRef.current.polygonsData();
 
+      // Find and update only the highlighted country
+      const updatedPolygonData = currentPolygonData.map((polygon) => {
+        const wasHighlighted = polygon.isHighlighted;
+
+        if (wasHighlighted) {
+          // Reset only the highlighted country
           return {
-            ...feature,
-            countryName: feature.properties.ADMIN || feature.properties.NAME,
-            countryCode: feature.properties.ISO_A3,
-            isTopCountry: !!topCountry,
-            isHighlighted: false, // Reset highlight state
+            ...polygon,
+            isHighlighted: false,
+            flagTexture: null,
+            centroid: null,
           };
         }
+
+        // Return other countries unchanged
+        return polygon;
+      });
+
+      // Only update if we actually found and modified a highlighted country
+      const hasChanges = updatedPolygonData.some(
+        (polygon, index) => polygon !== currentPolygonData[index]
       );
 
-      globeRef.current.polygonsData(allCountryPolygons);
+      if (hasChanges) {
+        globeRef.current.polygonsData(updatedPolygonData);
+      }
     }
 
     // Remove any existing border glow and flags
@@ -814,9 +825,9 @@ export function useThreeJS(containerRef) {
           // Update only this country's data
           return {
             ...polygon,
-            isHighlighted: true,
+            isHighlighted: !!flagTexture, // Only highlight if we have a flag texture
             flagTexture: flagTexture,
-            centroid: polygonData.centroid,
+            centroid: flagTexture ? polygonData.centroid : null, // Only set centroid if we have a flag
           };
         }
 
