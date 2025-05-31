@@ -7,7 +7,7 @@ export function createEarth(scene) {
   // Create the globe instance with basic setup
   const globe = new ThreeGlobe()
     .globeImageUrl("/Albedo.jpg") // Earth texture
-    .bumpImageUrl("./Bump.jpg") // Bump map for terrain
+    // .bumpImageUrl("./Bump.jpg") // Bump map for terrain
     .showAtmosphere(true) // Enable atmosphere
     .atmosphereColor("#87ceeb") // Light sky blue atmosphere
     .atmosphereAltitude(0.15); // Atmosphere height

@@ -1,12 +1,10 @@
 import { useEffect, useState, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import ThreeGlobe from "three-globe";
 import polylabel from "polylabel";
 import { useAppContext, actions } from "../context/AppContext";
 import { topCountries } from "../data/topCountries";
 import { createEarth } from "./createEarth";
-import { all } from "three/tsl";
 
 export function useThreeJS(containerRef) {
   // Use centralized state management
@@ -113,7 +111,7 @@ export function useThreeJS(containerRef) {
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
     controls.screenSpacePanning = false;
-    controls.minDistance = 50; // Min zoom for three-globe (allow camera to reach 150)
+    controls.minDistance = 20; // Min zoom for three-globe (allow camera to reach 150)
     controls.maxDistance = 500; // Max zoom for three-globe
     controls.enablePan = true; // Allow panning
 
@@ -340,16 +338,16 @@ export function useThreeJS(containerRef) {
           }
           return state.countries.allcountries_border_color; // Use the global border color for all countries
         })
-        .polygonAltitude((d) => {
-          if (d.isHighlighted && !isCameraMoving) {
-            if (state.countries.glowIntensity) {
-              return 0.025 * state.countries.glowIntensity;
-            } else {
-              return 0.02;
-            }
-          }
-          return 0.01;
-        })
+        // .polygonAltitude((d) => {
+        //   if (d.isHighlighted && !isCameraMoving) {
+        //     if (state.countries.glowIntensity) {
+        //       return 0.025 * state.countries.glowIntensity;
+        //     } else {
+        //       return 0.02;
+        //     }
+        //   }
+        //   return 0.01;
+        // })
         .polygonCapMaterial((d) => {
           if (
             d.isHighlighted &&
@@ -458,40 +456,30 @@ export function useThreeJS(containerRef) {
 
     // Update polygon styling
     globeRef.current
-      .polygonStrokeColor((d) => {
-        if (d.isHighlighted) {
-          // Use focused border color for highlighted countries
-          // return focusedBorderColor;
-          // return allcountries_border_color;
-          return "rgba(200, 200, 200, 0.1)";
-        }
-        // Apply border to all countries in the world
-        // return allcountries_border_color;
-        return "rgba(200, 200, 200, 0.1)";
-      })
+
       .polygonCapColor((d) => {
         return "rgba(200, 200, 200, 0.1)";
       })
       .polygonSideColor((d) => {
-        return "rgba(200, 200, 200, 0.05)";
+        return "rgba(234, 5, 5, 0.84)";
       })
       .polygonStrokeColor((d) => {
         if (d.isHighlighted) {
           return "rgb(224, 227, 25)";
         }
-        return "rgb(246, 9, 9)";
+        return "rgb(9, 246, 56)";
       })
-      .polygonAltitude((d) => {
-        // if (d.isHighlighted && !isCameraMoving) {
-        //   if (enableGlow) {
-        //     // Slightly more elevated when glowing
-        //     return 0.025 * glowIntensity;
-        //   } else {
-        //     return 0.02;
-        //   }
-        // }
-        return 0.01;
-      });
+      // .polygonAltitude((d) => {
+      //   if (d.isHighlighted && !isCameraMoving) {
+      //     if (enableGlow) {
+      //       // Slightly more elevated when glowing
+      //       return 0.025 * glowIntensity;
+      //     } else {
+      //       return 0.02;
+      //     }
+      //   }
+      //   return 0.1;
+      // });
   }
 
   // --- Country Highlighting Functions ---
@@ -802,12 +790,12 @@ export function useThreeJS(containerRef) {
       centroid: calculateCountryCentroid(countryFeature),
     };
 
-    // Use an accessor function for altitude to ensure it's applied per polygon
-    globeRef.current.polygonAltitude((d) => {
-      // Use small altitude values since we're using globe's natural coordinate system
-      // return 0.01; // Small positive altitude above the globe surface
-      return 0.01; // 0.001 initially-  Small positive altitude above the globe surface
-    });
+    // // Use an accessor function for altitude to ensure it's applied per polygon
+    // globeRef.current.polygonAltitude((d) => {
+    //   // Use small altitude values since we're using globe's natural coordinate system
+    //   // return 0.01; // Small positive altitude above the globe surface
+    //   return 0.01; // 0.001 initially-  Small positive altitude above the globe surface
+    // });
 
     // Instead of updating all polygons, find and update just this specific country's data
     if (geojsonCountriesData && globeRef.current) {
