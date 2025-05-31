@@ -516,6 +516,12 @@ export function useThreeJS(containerRef) {
       .polygonSideColor((d) => {
         return "rgba(200, 200, 200, 0.05)";
       })
+      .polygonStrokeColor((d) => {
+        if (d.isHighlighted) {
+          return "rgb(224, 227, 25)";
+        }
+        return "rgb(246, 9, 9)";
+      })
       .polygonAltitude((d) => {
         // if (d.isHighlighted && !isCameraMoving) {
         //   if (enableGlow) {
@@ -566,40 +572,10 @@ export function useThreeJS(containerRef) {
       flagLoadingTimeoutRef.current = null;
     }
 
-    // Schedule flag display after delay (last 4 seconds of highlight)
-    const flagDelay = state.animation.timeToWaitForHighlightedCountry - 4000;
+    // Flag display will be triggered after camera animation completes (in camera animation callback)
     console.log(
-      `[Highlight Country] Scheduling flag display for ${countryName} in ${flagDelay}ms`
+      `[Highlight Country] Flag will be displayed 0.5s after camera animation completes for ${countryName}`
     );
-    console.log(
-      `[Highlight Country] Total wait time: ${state.animation.timeToWaitForHighlightedCountry}ms`
-    );
-
-    flagLoadingTimeoutRef.current = setTimeout(() => {
-      console.log(
-        `[Highlight Country] Flag timeout triggered for ${countryName}`
-      );
-      console.log(
-        `[Highlight Country] Current selected country:`,
-        selectedCountry
-      );
-      console.log(`[Highlight Country] Target country code:`, countryCode);
-
-      // Always display flag for the triggered country during auto-animation
-      if (
-        isAutoAnimatingRef.current ||
-        selectedCountry?.countryCode === countryCode
-      ) {
-        console.log(
-          `[Highlight Country] Calling displayCountryFlag for ${countryName}`
-        );
-        displayCountryFlag(countryName, targetCountry);
-      } else {
-        console.log(
-          `[Highlight Country] Skipping flag display - not in auto-animation and country mismatch`
-        );
-      }
-    }, flagDelay);
 
     console.log(
       `[Highlight Country] Country highlighting complete for: ${countryName}`
@@ -1313,34 +1289,59 @@ export function useThreeJS(containerRef) {
       console.log(
         `[Auto-Animation] Camera animation complete for ${
           country.name
-        }, camera distance: ${currentCameraDistance.toFixed(2)}, waiting ${
-          state.animation.timeToWaitForHighlightedCountry
-        }ms`
+        }, camera distance: ${currentCameraDistance.toFixed(2)}`
       );
       console.log(
         `[Auto-Animation] Current auto-animation state during callback: ${state.animation.isAutoAnimating}`
       );
 
-      // Stay focused on country for specified time
+      // Phase 1: Border animation (starts immediately after camera animation)
       setTimeout(() => {
-        // Re-check the ref state at the time of execution
         console.log(
-          `[Auto-Animation] Timeout callback executing. Current ref state: ${isAutoAnimatingRef.current}`
+          `[Auto-Animation] Triggering border animation for ${country.name} (${state.animation.borderAnimationTime}ms duration)`
         );
 
-        if (isAutoAnimatingRef.current) {
-          logCameraPosition("Before moving to next country");
+        // Trigger border animation here
+        triggerBorderAnimationAtZoomDistance();
+
+        // Phase 2: Flag animation (starts after border animation)
+        setTimeout(() => {
           console.log(
-            `[Auto-Animation] Moving to next country after ${country.name}`
+            `[Auto-Animation] Triggering flag display for ${country.name} (after ${state.animation.borderAnimationTime}ms border animation)`
           );
-          dispatch(actions.nextCountry());
-          animateToCountry(countryIndex + 1, callback);
-        } else {
-          console.log(
-            `[Auto-Animation] Auto-animation stopped (ref check), not proceeding to next country`
-          );
-        }
-      }, state.animation.timeToWaitForHighlightedCountry);
+
+          // Find the target country for flag display
+          const targetCountry = findCountryByCode(country.code, country.name);
+          if (
+            targetCountry &&
+            (isAutoAnimatingRef.current ||
+              selectedCountry?.countryCode === country.code)
+          ) {
+            displayCountryFlag(country.name, targetCountry);
+          }
+
+          // Phase 3: Wait before moving to next country
+          setTimeout(() => {
+            console.log(
+              `[Auto-Animation] Wait period complete for ${country.name} (${state.animation.afterFlagAnimationWaitFor}ms), moving to next country`
+            );
+
+            // Re-check the ref state at the time of execution
+            if (isAutoAnimatingRef.current) {
+              logCameraPosition("Before moving to next country");
+              console.log(
+                `[Auto-Animation] Moving to next country after ${country.name}`
+              );
+              dispatch(actions.nextCountry());
+              animateToCountry(countryIndex + 1, callback);
+            } else {
+              console.log(
+                `[Auto-Animation] Auto-animation stopped (ref check), not proceeding to next country`
+              );
+            }
+          }, state.animation.afterFlagAnimationWaitFor);
+        }, state.animation.flagAnimationTime);
+      }, 0); // Border animation starts immediately after camera animation completes
     });
   };
 
@@ -1774,6 +1775,7 @@ export function useThreeJS(containerRef) {
       );
 
       // Create animated border outline for the currently highlighted country
+      console.log({ selectedCountry });
       createAnimatedBorderOutline(selectedCountry);
       setBorderAnimationTriggered(true);
     }

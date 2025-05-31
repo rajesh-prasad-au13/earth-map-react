@@ -53,6 +53,15 @@ const initialState = {
     currentCountryIndex: 0,
     isAutoAnimating: false,
     timeToWaitForHighlightedCountry: 6000, // 6 seconds total per country (reduced from 9s)
+    borderAnimationTime: 2000, // 2 seconds for border animation
+    flagAnimationTime: 1500, // 1.5 seconds for flag animation display
+    get afterFlagAnimationWaitFor() {
+      return (
+        this.timeToWaitForHighlightedCountry -
+        this.borderAnimationTime -
+        this.flagAnimationTime
+      );
+    }, // Calculated: remaining time after border and flag animations (2.5s)
   },
 
   // Recording settings
@@ -113,6 +122,10 @@ export const actionTypes = {
   STOP_AUTO_ANIMATION: "STOP_AUTO_ANIMATION",
   SET_CURRENT_COUNTRY_INDEX: "SET_CURRENT_COUNTRY_INDEX",
   NEXT_COUNTRY: "NEXT_COUNTRY",
+  SET_BORDER_ANIMATION_TIME: "SET_BORDER_ANIMATION_TIME",
+  SET_FLAG_ANIMATION_TIME: "SET_FLAG_ANIMATION_TIME",
+  SET_TIME_TO_WAIT_FOR_HIGHLIGHTED_COUNTRY:
+    "SET_TIME_TO_WAIT_FOR_HIGHLIGHTED_COUNTRY",
 
   // Recording actions
   SET_RESOLUTION: "SET_RESOLUTION",
@@ -364,6 +377,33 @@ function appReducer(state, action) {
         },
       };
 
+    case actionTypes.SET_BORDER_ANIMATION_TIME:
+      return {
+        ...state,
+        animation: {
+          ...state.animation,
+          borderAnimationTime: action.payload,
+        },
+      };
+
+    case actionTypes.SET_FLAG_ANIMATION_TIME:
+      return {
+        ...state,
+        animation: {
+          ...state.animation,
+          flagAnimationTime: action.payload,
+        },
+      };
+
+    case actionTypes.SET_TIME_TO_WAIT_FOR_HIGHLIGHTED_COUNTRY:
+      return {
+        ...state,
+        animation: {
+          ...state.animation,
+          timeToWaitForHighlightedCountry: action.payload,
+        },
+      };
+
     // Recording actions
     case actionTypes.SET_RESOLUTION:
       return {
@@ -585,6 +625,21 @@ export const actions = {
 
   nextCountry: () => ({
     type: actionTypes.NEXT_COUNTRY,
+  }),
+
+  setBorderAnimationTime: (time) => ({
+    type: actionTypes.SET_BORDER_ANIMATION_TIME,
+    payload: time,
+  }),
+
+  setFlagAnimationTime: (time) => ({
+    type: actionTypes.SET_FLAG_ANIMATION_TIME,
+    payload: time,
+  }),
+
+  setTimeToWaitForHighlightedCountry: (time) => ({
+    type: actionTypes.SET_TIME_TO_WAIT_FOR_HIGHLIGHTED_COUNTRY,
+    payload: time,
   }),
 
   // Recording actions
