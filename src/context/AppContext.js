@@ -1,10 +1,11 @@
 import React, { createContext, useContext, useReducer } from "react";
+import { allcountries_border_color } from "../constants";
 
 // Initial state
 const initialState = {
   // Camera settings
   camera: {
-    position: { x: 0, y: 0, z: 5 },
+    position: { x: 0, y: 0, z: 200 }, // Increased from 5 to be appropriate for ThreeGlobe radius 100
     rotation: { x: 0, y: 0, z: 0 },
     zoom: 1,
     autoRotate: true,
@@ -27,6 +28,7 @@ const initialState = {
     hovered: null,
     visible: true,
     showBorders: true,
+    allcountries_border_color: "#ffff",
     highlightColor: "#ff6b6b",
     showFlags: true,
     enableGlow: true,
@@ -63,9 +65,9 @@ const initialState = {
   },
 
   // Zoom distance constants (from reference implementation)
-  INITIAL_ZOOM_DISTANCE: 350,
-  COUNTRY_VIEW_ZOOM_DISTANCE: 150,
-  COUNTRY_TO_COUNTRY_ZOOM_DISTANCE: 220,
+  INITIAL_ZOOM_DISTANCE: 200, // Reduced from 350 to be closer to the globe
+  COUNTRY_VIEW_ZOOM_DISTANCE: 120, // Reduced from 150
+  COUNTRY_TO_COUNTRY_ZOOM_DISTANCE: 160, // Reduced from 220
 };
 
 // Action types

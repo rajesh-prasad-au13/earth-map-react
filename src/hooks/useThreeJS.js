@@ -5,6 +5,8 @@ import ThreeGlobe from "three-globe";
 import polylabel from "polylabel";
 import { useAppContext, actions } from "../context/AppContext";
 import { topCountries } from "../data/topCountries";
+import { createEarth } from "./createEarth";
+import { all } from "three/tsl";
 
 export function useThreeJS(containerRef) {
   // Use centralized state management
@@ -90,7 +92,7 @@ export function useThreeJS(containerRef) {
   }, []);
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!containerRef.current || !geojsonCountriesData) return;
 
     console.log("RENDER: Starting main Three.js render effect");
 
@@ -180,51 +182,7 @@ export function useThreeJS(containerRef) {
 
     // --- Three-Globe Setup (Primary Earth) ---
     // Create a new ThreeGlobe instance as our main Earth
-    const globe = new ThreeGlobe();
-
-    // Configure the globe to be our primary Earth (matching reference implementation)
-    globe.globeImageUrl("/Albedo.jpg"); // Earth texture
-    globe.bumpImageUrl("/Bump.jpg"); // Bump map for terrain
-    globe.showAtmosphere(true); // Enable atmosphere
-    globe.atmosphereColor("#87ceeb"); // Light sky blue atmosphere
-    globe.atmosphereAltitude(0.15); // Atmosphere height
-
-    // Configure polygon behavior using GeoJSON directly
-    globe.polygonsData([]);
-    // Use the geometry property of the GeoJSON feature directly
-    globe.polygonGeoJsonGeometry((d) => d.geometry);
-
-    // Initial setup - will be overridden when data loads
-    globe.polygonsTransitionDuration(0); // Disable transitions for immediate rendering
-
-    // Setup polygon materials using accessor functions that check for texture
-    globe.polygonCapMaterial((d) => {
-      console.log(
-        `[DEBUG] polygonCapMaterial accessor called for:`,
-        d.properties?.name || d.countryName,
-        "has texture:",
-        !!d.flagTexture,
-        "isHighlighted:",
-        !!d.isHighlighted
-      );
-      // Only show flag if highlighted, has texture, camera is not moving, and flags are enabled
-      if (d.isHighlighted && d.flagTexture && !isCameraMoving && showFlags) {
-        console.log(
-          `[DEBUG] Creating material with flag texture for:`,
-          d.properties?.name || d.countryName
-        );
-        return new THREE.MeshBasicMaterial({
-          map: d.flagTexture,
-          transparent: true,
-          opacity: 1.0,
-          side: THREE.DoubleSide,
-        });
-      }
-      // Return undefined to use default globe material (critical fix)
-      return undefined;
-    });
-
-    // Remove duplicate configurations - use only the settings above
+    const globe = createEarth(scene);
 
     // Position the globe at center - no scaling needed since this IS our earth
     globe.position.set(0, 0, 0);
@@ -322,59 +280,6 @@ export function useThreeJS(containerRef) {
     cloudsMeshRef.current = cloudsMesh;
     // scene.add(cloudsMesh);
 
-    // --- Setup Country Polygons for Three-Globe ---
-    if (geojsonCountriesData) {
-      console.log("POLYGONS: Setting up country polygons for three-globe");
-      console.log(
-        "POLYGONS: Features count:",
-        geojsonCountriesData.features?.length
-      );
-
-      // Prepare country polygon data for three-globe
-      const countryPolygonData = geojsonCountriesData.features.map(
-        (feature, index) => {
-          const countryName =
-            feature.properties.name || `Unknown Country ${index}`;
-          const countryCode =
-            feature.properties.iso_a2 ||
-            feature.properties.iso_a3 ||
-            `UNKNOWN_${index}`;
-
-          return {
-            ...feature,
-            countryName,
-            countryCode,
-            isHighlighted: false,
-            flagTexture: null,
-          };
-        }
-      );
-
-      console.log({ countryPolygonData });
-      // Set the polygon data on the globe first
-      globe.polygonsData(countryPolygonData);
-
-      // CRITICAL: Configure borders for ALL countries after data is loaded
-      globe.polygonAltitude(0.01); // Small altitude to lift borders above surface
-      globe.polygonCapColor(() => "transparent"); // Keep all caps transparent
-      globe.polygonSideColor(() => "rgba(255,255,255,0.1)"); // Subtle side walls
-      globe.polygonStrokeColor((d) => {
-        if (d.isHighlighted && !isCameraMoving) {
-          return "#ffcc00"; // YELLOW borders for highlighted countries
-        }
-        return "#ffffff"; // WHITE borders for ALL countries
-      }); // WHITE borders for ALL countries
-
-      // Force update to ensure settings are applied
-      // globe.polygonsData(countryPolygonData); // Reapply data to trigger updates
-
-      console.log(
-        `POLYGONS: Added ${countryPolygonData.length} countries with WHITE borders to three-globe`
-      );
-    } else {
-      console.log("POLYGONS: No GeoJSON data available yet");
-    }
-
     // --- Animation Loop ---
     let animationId;
     function animate() {
@@ -429,6 +334,85 @@ export function useThreeJS(containerRef) {
       renderer.render(scene, camera);
     }
     animate();
+
+    // load country data
+    try {
+      // Store ALL country polygons for later use - not just top countries
+      const allCountryPolygons = geojsonCountriesData.features.map(
+        (feature) => {
+          // Check if this is one of the top countries
+          const topCountry = topCountries.find(
+            (c) => c.code === feature.properties.ISO_A3
+          );
+
+          return {
+            ...feature,
+            countryName: feature.properties.ADMIN || feature.properties.NAME,
+            countryCode: feature.properties.ISO_A3,
+            isTopCountry: !!topCountry,
+          };
+        }
+      );
+      // setCountryPolygons(allCountryPolygons);
+
+      // Set up the globe with country polygons
+      globeRef.current
+        .polygonsData(allCountryPolygons)
+        .polygonGeoJsonGeometry((d) => d.geometry)
+        .polygonCapColor((d) => {
+          return "rgba(200, 200, 200, 0.1)";
+        })
+        .polygonSideColor((d) => {
+          return "rgba(200, 200, 200, 0.05)";
+        })
+        .polygonStrokeColor((d) => {
+          if (
+            d.isHighlighted &&
+            !isCameraMoving &&
+            state.countries.enableGlow
+          ) {
+            return state.countries.highlightColor;
+          }
+          return state.countries.allcountries_border_color; // Use the global border color for all countries
+        })
+        .polygonAltitude((d) => {
+          if (d.isHighlighted && !isCameraMoving) {
+            if (state.countries.glowIntensity) {
+              return 0.025 * state.countries.glowIntensity;
+            } else {
+              return 0.02;
+            }
+          }
+          return 0.001;
+        })
+        .polygonCapMaterial((d) => {
+          if (
+            d.isHighlighted &&
+            d.flagTexture &&
+            !isCameraMoving &&
+            showFlags
+          ) {
+            return new THREE.MeshBasicMaterial({
+              map: d.flagTexture,
+              transparent: true,
+              opacity: 1,
+              side: THREE.DoubleSide,
+            });
+          }
+          return undefined; // Use default color
+        });
+
+      // document.getElementById("loading").style.display = "none";
+      console.log("Country data loaded successfully");
+
+      // Initialize default styles
+      updateCountryStyles();
+
+      // Don't start animation automatically anymore
+    } catch (err) {
+      console.error("Error loading data:", err);
+      // document.getElementById("loading").textContent = "Error loading data.";
+    }
 
     // Handle window resize
     const handleResize = () => {
@@ -509,6 +493,41 @@ export function useThreeJS(containerRef) {
     state && state.camera && state.camera.position,
     geojsonCountriesData,
   ]);
+
+  function updateCountryStyles() {
+    if (!globeRef.current || !geojsonCountriesData.features.length) return;
+
+    // Update polygon styling
+    globeRef.current
+      .polygonStrokeColor((d) => {
+        if (d.isHighlighted) {
+          // Use focused border color for highlighted countries
+          // return focusedBorderColor;
+          // return allcountries_border_color;
+          return "rgba(200, 200, 200, 0.1)";
+        }
+        // Apply border to all countries in the world
+        // return allcountries_border_color;
+        return "rgba(200, 200, 200, 0.1)";
+      })
+      .polygonCapColor((d) => {
+        return "rgba(200, 200, 200, 0.1)";
+      })
+      .polygonSideColor((d) => {
+        return "rgba(200, 200, 200, 0.05)";
+      })
+      .polygonAltitude((d) => {
+        // if (d.isHighlighted && !isCameraMoving) {
+        //   if (enableGlow) {
+        //     // Slightly more elevated when glowing
+        //     return 0.025 * glowIntensity;
+        //   } else {
+        //     return 0.02;
+        //   }
+        // }
+        return 0.01;
+      });
+  }
 
   // --- Country Highlighting Functions ---
   const highlightCountry = (countryCode, countryName) => {
@@ -594,9 +613,25 @@ export function useThreeJS(containerRef) {
       flagLoadingTimeoutRef.current = null;
     }
 
-    // Clear globe polygons
-    if (globeRef.current) {
-      globeRef.current.polygonsData([]);
+    // Reset all country polygons to default state instead of clearing them
+    if (globeRef.current && geojsonCountriesData) {
+      const allCountryPolygons = geojsonCountriesData.features.map(
+        (feature) => {
+          const topCountry = topCountries.find(
+            (c) => c.code === feature.properties.ISO_A3
+          );
+
+          return {
+            ...feature,
+            countryName: feature.properties.ADMIN || feature.properties.NAME,
+            countryCode: feature.properties.ISO_A3,
+            isTopCountry: !!topCountry,
+            isHighlighted: false, // Reset highlight state
+          };
+        }
+      );
+
+      globeRef.current.polygonsData(allCountryPolygons);
     }
 
     // Remove any existing border glow and flags
@@ -890,200 +925,206 @@ export function useThreeJS(containerRef) {
     console.log(`[DEBUG] Globe current scale:`, globeRef.current.scale);
     console.log(`[DEBUG] Globe current rotation:`, globeRef.current.rotation);
 
-    // Clear existing polygons before adding new ones
-    globeRef.current.polygonsData([]);
+    // Instead of clearing all polygons and showing only one,
+    // update all countries with the highlighting information
+    if (geojsonCountriesData) {
+      const allCountryPolygons = geojsonCountriesData.features.map(
+        (feature) => {
+          const topCountry = topCountries.find(
+            (c) => c.code === feature.properties.ISO_A3
+          );
 
-    // Force a small delay to ensure the globe is ready
-    setTimeout(() => {
-      // Then update globe with the flag polygon data
-      // The texture will be accessed through the polygonCapMaterial accessor function
-      console.log(
-        "[Flag Filled Country] Adding polygon data to globe:",
-        polygonData.countryName
+          const isCurrentCountry =
+            feature.properties.ADMIN === countryName ||
+            feature.properties.NAME === countryName ||
+            feature.properties.ISO_A3 === polygonData.countryCode;
+
+          return {
+            ...feature,
+            countryName: feature.properties.ADMIN || feature.properties.NAME,
+            countryCode: feature.properties.ISO_A3,
+            isTopCountry: !!topCountry,
+            isHighlighted: isCurrentCountry,
+            flagTexture: isCurrentCountry ? flagTexture : null,
+            centroid: isCurrentCountry ? polygonData.centroid : null,
+          };
+        }
       );
-      globeRef.current.polygonsData([polygonData]);
 
-      console.log("[DEBUG] Polygon data added to three-globe");
+      // Update the globe with all countries, but with highlighting
+      globeRef.current.polygonsData(allCountryPolygons);
+    }
 
-      // COMPREHENSIVE DISTANCE AND POSITION DEBUGGING
-      setTimeout(() => {
-        console.log("=== DISTANCE ANALYSIS START ===");
+    console.log("[DEBUG] Polygon data added to three-globe");
 
-        // Three-globe reference data
-        const globe = globeRef.current;
-        const globeRadius = 100; // Three-globe default radius
-        const globeCenter = globe.position.clone();
+    // COMPREHENSIVE DISTANCE AND POSITION DEBUGGING
+    setTimeout(() => {
+      console.log("=== DISTANCE ANALYSIS START ===");
 
-        console.log(`[DISTANCE] Three-globe radius: ${globeRadius}`);
-        console.log(`[DISTANCE] Three-globe center:`, globeCenter);
+      // Three-globe reference data
+      const globe = globeRef.current;
+      const globeRadius = 100; // Three-globe default radius
+      const globeCenter = globe.position.clone();
 
-        // Globe positioning
-        console.log(`[DISTANCE] Globe position:`, globeRef.current.position);
-        console.log(`[DISTANCE] Globe scale:`, globeRef.current.scale);
-        console.log(`[DISTANCE] Globe rotation:`, globeRef.current.rotation);
+      console.log(`[DISTANCE] Three-globe radius: ${globeRadius}`);
+      console.log(`[DISTANCE] Three-globe center:`, globeCenter);
+
+      // Globe positioning
+      console.log(`[DISTANCE] Globe position:`, globeRef.current.position);
+      console.log(`[DISTANCE] Globe scale:`, globeRef.current.scale);
+      console.log(`[DISTANCE] Globe rotation:`, globeRef.current.rotation);
+      console.log(
+        `[DISTANCE] Globe children count:`,
+        globeRef.current.children.length
+      );
+
+      globeRef.current.children.forEach((child, index) => {
+        console.log(`[DISTANCE] === Analyzing Globe Child ${index} ===`);
+        console.log(`[DISTANCE] Child type: ${child.type}`);
+        console.log(`[DISTANCE] Child position:`, child.position);
+        console.log(`[DISTANCE] Child scale:`, child.scale);
+        console.log(`[DISTANCE] Child rotation:`, child.rotation);
+
+        // Calculate world position
+        const worldPosition = new THREE.Vector3();
+        child.getWorldPosition(worldPosition);
+        console.log(`[DISTANCE] Child world position:`, worldPosition);
+
+        // Calculate distance from globe center
+        const distanceFromGlobeCenter = worldPosition.distanceTo(globeCenter);
         console.log(
-          `[DISTANCE] Globe children count:`,
-          globeRef.current.children.length
+          `[DISTANCE] Distance from Globe center: ${distanceFromGlobeCenter.toFixed(
+            4
+          )}`
+        );
+        console.log(
+          `[DISTANCE] Expected surface distance should be ~${
+            globeRadius + 0.1
+          } (radius + altitude)`
+        );
+        console.log(
+          `[DISTANCE] Actual vs Expected ratio: ${(
+            distanceFromGlobeCenter /
+            (globeRadius + 0.1)
+          ).toFixed(4)}`
         );
 
-        globeRef.current.children.forEach((child, index) => {
-          console.log(`[DISTANCE] === Analyzing Globe Child ${index} ===`);
-          console.log(`[DISTANCE] Child type: ${child.type}`);
-          console.log(`[DISTANCE] Child position:`, child.position);
-          console.log(`[DISTANCE] Child scale:`, child.scale);
-          console.log(`[DISTANCE] Child rotation:`, child.rotation);
+        // Check if it's a mesh with geometry
+        if (child.type === "Mesh" && child.geometry) {
+          child.geometry.computeBoundingSphere();
+          const boundingSphere = child.geometry.boundingSphere;
+          console.log(
+            `[DISTANCE] Child bounding sphere center:`,
+            boundingSphere.center
+          );
+          console.log(
+            `[DISTANCE] Child bounding sphere radius:`,
+            boundingSphere.radius
+          );
+
+          // Check material
+          if (child.material && child.material.map) {
+            console.log(
+              `[DISTANCE] Child has texture map: ${!!child.material.map}`
+            );
+            console.log(`[DISTANCE] Material opacity:`, child.material.opacity);
+            console.log(
+              `[DISTANCE] Material transparent:`,
+              child.material.transparent
+            );
+          }
+        }
+
+        // If it's a group, analyze its children too
+        if (child.type === "Group" && child.children.length > 0) {
+          console.log(`[DISTANCE] Group has ${child.children.length} children`);
+          child.children.forEach((groupChild, groupIndex) => {
+            const groupChildWorldPos = new THREE.Vector3();
+            groupChild.getWorldPosition(groupChildWorldPos);
+            const groupChildDistance =
+              groupChildWorldPos.distanceTo(globeCenter);
+            console.log(
+              `[DISTANCE] Group child ${groupIndex} distance from Globe: ${groupChildDistance.toFixed(
+                4
+              )}`
+            );
+          });
+        }
+      });
+
+      console.log("=== DISTANCE ANALYSIS END ===");
+    }, 100);
+
+    // Debug: Check globe children after adding polygon
+    setTimeout(() => {
+      console.log(
+        `[DEBUG] Globe children count after adding polygon:`,
+        globeRef.current.children.length
+      );
+      console.log(
+        `[DEBUG] Globe final rotation Y:`,
+        globeRef.current.rotation.y
+      );
+      console.log(`[DEBUG] Globe final position:`, globeRef.current.position);
+      console.log(`[DEBUG] Globe final scale:`, globeRef.current.scale);
+
+      globeRef.current.children.forEach((child, index) => {
+        console.log(`[DEBUG] Globe child ${index}:`, {
+          type: child.type,
+          position: child.position,
+          scale: child.scale,
+          userData: child.userData,
+        });
+
+        // If it's a mesh, check its geometry bounds and world position
+        if (child.type === "Mesh" && child.geometry) {
+          child.geometry.computeBoundingSphere();
+          console.log(
+            `[DEBUG] Child ${index} bounding sphere:`,
+            child.geometry.boundingSphere
+          );
 
           // Calculate world position
           const worldPosition = new THREE.Vector3();
           child.getWorldPosition(worldPosition);
-          console.log(`[DISTANCE] Child world position:`, worldPosition);
+          console.log(`[DEBUG] Child ${index} world position:`, worldPosition);
+        }
 
-          // Calculate distance from globe center
-          const distanceFromGlobeCenter = worldPosition.distanceTo(globeCenter);
+        // If it's a group, check its children
+        if (child.type === "Group" && child.children.length > 0) {
           console.log(
-            `[DISTANCE] Distance from Globe center: ${distanceFromGlobeCenter.toFixed(
-              4
-            )}`
+            `[DEBUG] Group ${index} has ${child.children.length} children`
           );
-          console.log(
-            `[DISTANCE] Expected surface distance should be ~${
-              globeRadius + 0.1
-            } (radius + altitude)`
-          );
-          console.log(
-            `[DISTANCE] Actual vs Expected ratio: ${(
-              distanceFromGlobeCenter /
-              (globeRadius + 0.1)
-            ).toFixed(4)}`
-          );
+          child.children.forEach((groupChild, groupIndex) => {
+            const worldPosition = new THREE.Vector3();
+            groupChild.getWorldPosition(worldPosition);
+            console.log(`[DEBUG] Group child ${groupIndex}:`, {
+              type: groupChild.type,
+              localPosition: groupChild.position,
+              worldPosition: worldPosition,
+              material: groupChild.material?.map ? "Has texture" : "No texture",
+              materialType: groupChild.material?.constructor.name,
+              hasUserData: !!groupChild.userData,
+              userDataKeys: Object.keys(groupChild.userData || {}),
+              visible: groupChild.visible,
+            });
 
-          // Check if it's a mesh with geometry
-          if (child.type === "Mesh" && child.geometry) {
-            child.geometry.computeBoundingSphere();
-            const boundingSphere = child.geometry.boundingSphere;
-            console.log(
-              `[DISTANCE] Child bounding sphere center:`,
-              boundingSphere.center
-            );
-            console.log(
-              `[DISTANCE] Child bounding sphere radius:`,
-              boundingSphere.radius
-            );
-
-            // Check material
-            if (child.material && child.material.map) {
+            // Check if this mesh should have our flag texture
+            if (groupChild.material && groupChild.material.map) {
               console.log(
-                `[DISTANCE] Child has texture map: ${!!child.material.map}`
-              );
-              console.log(
-                `[DISTANCE] Material opacity:`,
-                child.material.opacity
-              );
-              console.log(
-                `[DISTANCE] Material transparent:`,
-                child.material.transparent
+                `[DEBUG] Found mesh with texture:`,
+                groupChild.material.map
               );
             }
-          }
-
-          // If it's a group, analyze its children too
-          if (child.type === "Group" && child.children.length > 0) {
-            console.log(
-              `[DISTANCE] Group has ${child.children.length} children`
-            );
-            child.children.forEach((groupChild, groupIndex) => {
-              const groupChildWorldPos = new THREE.Vector3();
-              groupChild.getWorldPosition(groupChildWorldPos);
-              const groupChildDistance =
-                groupChildWorldPos.distanceTo(globeCenter);
-              console.log(
-                `[DISTANCE] Group child ${groupIndex} distance from Globe: ${groupChildDistance.toFixed(
-                  4
-                )}`
-              );
-            });
-          }
-        });
-
-        console.log("=== DISTANCE ANALYSIS END ===");
-      }, 100);
-
-      // Debug: Check globe children after adding polygon
-      setTimeout(() => {
-        console.log(
-          `[DEBUG] Globe children count after adding polygon:`,
-          globeRef.current.children.length
-        );
-        console.log(
-          `[DEBUG] Globe final rotation Y:`,
-          globeRef.current.rotation.y
-        );
-        console.log(`[DEBUG] Globe final position:`, globeRef.current.position);
-        console.log(`[DEBUG] Globe final scale:`, globeRef.current.scale);
-
-        globeRef.current.children.forEach((child, index) => {
-          console.log(`[DEBUG] Globe child ${index}:`, {
-            type: child.type,
-            position: child.position,
-            scale: child.scale,
-            userData: child.userData,
           });
+        }
+      });
+    }, 100);
 
-          // If it's a mesh, check its geometry bounds and world position
-          if (child.type === "Mesh" && child.geometry) {
-            child.geometry.computeBoundingSphere();
-            console.log(
-              `[DEBUG] Child ${index} bounding sphere:`,
-              child.geometry.boundingSphere
-            );
-
-            // Calculate world position
-            const worldPosition = new THREE.Vector3();
-            child.getWorldPosition(worldPosition);
-            console.log(
-              `[DEBUG] Child ${index} world position:`,
-              worldPosition
-            );
-          }
-
-          // If it's a group, check its children
-          if (child.type === "Group" && child.children.length > 0) {
-            console.log(
-              `[DEBUG] Group ${index} has ${child.children.length} children`
-            );
-            child.children.forEach((groupChild, groupIndex) => {
-              const worldPosition = new THREE.Vector3();
-              groupChild.getWorldPosition(worldPosition);
-              console.log(`[DEBUG] Group child ${groupIndex}:`, {
-                type: groupChild.type,
-                localPosition: groupChild.position,
-                worldPosition: worldPosition,
-                material: groupChild.material?.map
-                  ? "Has texture"
-                  : "No texture",
-                materialType: groupChild.material?.constructor.name,
-                hasUserData: !!groupChild.userData,
-                userDataKeys: Object.keys(groupChild.userData || {}),
-                visible: groupChild.visible,
-              });
-
-              // Check if this mesh should have our flag texture
-              if (groupChild.material && groupChild.material.map) {
-                console.log(
-                  `[DEBUG] Found mesh with texture:`,
-                  groupChild.material.map
-                );
-              }
-            });
-          }
-        });
-      }, 100);
-
-      // Force a scene update
-      if (sceneRef.current) {
-        sceneRef.current.updateMatrixWorld();
-      }
-    }, 50);
+    // Force a scene update
+    if (sceneRef.current) {
+      sceneRef.current.updateMatrixWorld();
+    }
 
     // Force a material update by resetting the accessor (will use the one we defined at initialization)
     if (flagTexture) {
