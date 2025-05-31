@@ -55,35 +55,14 @@ export function useThreeJS(containerRef) {
 
   // --- Load GeoJSON Data ---
   useEffect(() => {
-    console.log("FETCH: Starting GeoJSON fetch...");
     fetch("/countries.geojson")
       .then((response) => {
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
-        console.log("FETCH: Response received, parsing JSON...");
         return response.json();
       })
       .then((data) => {
-        console.log(
-          "FETCH: GeoJSON data loaded successfully:",
-          data.features
-            ? `${data.features.length} countries found`
-            : "No features found"
-        );
-
-        // Log the first few features to understand the structure
-        if (data.features && data.features.length > 0) {
-          console.log(
-            "FETCH: Sample feature properties:",
-            data.features[0].properties
-          );
-          console.log(
-            "FETCH: Available property keys:",
-            Object.keys(data.features[0].properties)
-          );
-        }
-
         setGeojsonCountriesData(data);
       })
       .catch((error) => {
@@ -93,14 +72,6 @@ export function useThreeJS(containerRef) {
 
   useEffect(() => {
     if (!containerRef.current || !geojsonCountriesData) return;
-
-    console.log("RENDER: Starting main Three.js render effect");
-
-    // Check if renderer already exists to prevent duplicate creation
-    if (rendererRef.current) {
-      console.log("RENDER: Renderer already exists, skipping creation");
-      return;
-    }
 
     // --- Scene, Camera, Renderer, Controls Setup ---
     const scene = new THREE.Scene();
@@ -188,17 +159,7 @@ export function useThreeJS(containerRef) {
     globe.position.set(0, 0, 0);
     scene.add(globe);
 
-    console.log("[DEBUG] Three-globe position:", globe.position);
-    console.log("[DEBUG] Three-globe scale:", globe.scale);
-    console.log("[DEBUG] Three-globe default radius: 100");
-    console.log(
-      "[DEBUG] Three-globe rotation Y after setting:",
-      globe.rotation.y
-    );
-
     // CRITICAL: Check three-globe's internal radius
-    console.log("[DEBUG] ThreeGlobe internal radius:", globe.getGlobeRadius());
-    console.log("[DEBUG] Three-globe default radius: 100");
 
     // Store reference - we'll reapply transforms after polygon data changes
     globeRef.current = globe;
@@ -402,16 +363,10 @@ export function useThreeJS(containerRef) {
           return undefined; // Use default color
         });
 
-      // document.getElementById("loading").style.display = "none";
-      console.log("Country data loaded successfully");
-
       // Initialize default styles
       updateCountryStyles();
-
-      // Don't start animation automatically anymore
     } catch (err) {
       console.error("Error loading data:", err);
-      // document.getElementById("loading").textContent = "Error loading data.";
     }
 
     // Handle window resize
@@ -571,15 +526,6 @@ export function useThreeJS(containerRef) {
       clearTimeout(flagLoadingTimeoutRef.current);
       flagLoadingTimeoutRef.current = null;
     }
-
-    // Flag display will be triggered after camera animation completes (in camera animation callback)
-    console.log(
-      `[Highlight Country] Flag will be displayed 0.5s after camera animation completes for ${countryName}`
-    );
-
-    console.log(
-      `[Highlight Country] Country highlighting complete for: ${countryName}`
-    );
   };
 
   const clearCountryHighlight = () => {
@@ -726,9 +672,6 @@ export function useThreeJS(containerRef) {
         const glow = new THREE.Mesh(glowGeometry, glowMaterial);
         marker.add(glow); // Add glow as child of marker
 
-        console.log(
-          `[CENTROID] Created three-globe native marker for ${d.name}`
-        );
         return marker;
       });
 
@@ -742,7 +685,6 @@ export function useThreeJS(containerRef) {
       if (centroidMarkerRef.current.usingThreeGlobe && globeRef.current) {
         // Clear three-globe objects
         globeRef.current.objectsData([]);
-        console.log(`[CENTROID] Removed three-globe centroid marker`);
       } else if (sceneRef.current) {
         // Handle old manual markers (fallback)
         const { marker, glow } = centroidMarkerRef.current;
@@ -758,7 +700,6 @@ export function useThreeJS(containerRef) {
           glow.geometry?.dispose();
           glow.material?.dispose();
         }
-        console.log(`[CENTROID] Removed manual centroid marker`);
       }
 
       centroidMarkerRef.current = null;
@@ -897,10 +838,6 @@ export function useThreeJS(containerRef) {
       return 0.005; // 0.01 initially-  Small positive altitude above the globe surface
     });
 
-    console.log(`[DEBUG] Globe current position:`, globeRef.current.position);
-    console.log(`[DEBUG] Globe current scale:`, globeRef.current.scale);
-    console.log(`[DEBUG] Globe current rotation:`, globeRef.current.rotation);
-
     // Instead of clearing all polygons and showing only one,
     // update all countries with the highlighting information
     if (geojsonCountriesData) {
@@ -930,172 +867,6 @@ export function useThreeJS(containerRef) {
       // Update the globe with all countries, but with highlighting
       globeRef.current.polygonsData(allCountryPolygons);
     }
-
-    console.log("[DEBUG] Polygon data added to three-globe");
-
-    // COMPREHENSIVE DISTANCE AND POSITION DEBUGGING
-    setTimeout(() => {
-      console.log("=== DISTANCE ANALYSIS START ===");
-
-      // Three-globe reference data
-      const globe = globeRef.current;
-      const globeRadius = 100; // Three-globe default radius
-      const globeCenter = globe.position.clone();
-
-      console.log(`[DISTANCE] Three-globe radius: ${globeRadius}`);
-      console.log(`[DISTANCE] Three-globe center:`, globeCenter);
-
-      // Globe positioning
-      console.log(`[DISTANCE] Globe position:`, globeRef.current.position);
-      console.log(`[DISTANCE] Globe scale:`, globeRef.current.scale);
-      console.log(`[DISTANCE] Globe rotation:`, globeRef.current.rotation);
-      console.log(
-        `[DISTANCE] Globe children count:`,
-        globeRef.current.children.length
-      );
-
-      globeRef.current.children.forEach((child, index) => {
-        console.log(`[DISTANCE] === Analyzing Globe Child ${index} ===`);
-        console.log(`[DISTANCE] Child type: ${child.type}`);
-        console.log(`[DISTANCE] Child position:`, child.position);
-        console.log(`[DISTANCE] Child scale:`, child.scale);
-        console.log(`[DISTANCE] Child rotation:`, child.rotation);
-
-        // Calculate world position
-        const worldPosition = new THREE.Vector3();
-        child.getWorldPosition(worldPosition);
-        console.log(`[DISTANCE] Child world position:`, worldPosition);
-
-        // Calculate distance from globe center
-        const distanceFromGlobeCenter = worldPosition.distanceTo(globeCenter);
-        console.log(
-          `[DISTANCE] Distance from Globe center: ${distanceFromGlobeCenter.toFixed(
-            4
-          )}`
-        );
-        console.log(
-          `[DISTANCE] Expected surface distance should be ~${
-            globeRadius + 0.1
-          } (radius + altitude)`
-        );
-        console.log(
-          `[DISTANCE] Actual vs Expected ratio: ${(
-            distanceFromGlobeCenter /
-            (globeRadius + 0.1)
-          ).toFixed(4)}`
-        );
-
-        // Check if it's a mesh with geometry
-        if (child.type === "Mesh" && child.geometry) {
-          child.geometry.computeBoundingSphere();
-          const boundingSphere = child.geometry.boundingSphere;
-          console.log(
-            `[DISTANCE] Child bounding sphere center:`,
-            boundingSphere.center
-          );
-          console.log(
-            `[DISTANCE] Child bounding sphere radius:`,
-            boundingSphere.radius
-          );
-
-          // Check material
-          if (child.material && child.material.map) {
-            console.log(
-              `[DISTANCE] Child has texture map: ${!!child.material.map}`
-            );
-            console.log(`[DISTANCE] Material opacity:`, child.material.opacity);
-            console.log(
-              `[DISTANCE] Material transparent:`,
-              child.material.transparent
-            );
-          }
-        }
-
-        // If it's a group, analyze its children too
-        if (child.type === "Group" && child.children.length > 0) {
-          console.log(`[DISTANCE] Group has ${child.children.length} children`);
-          child.children.forEach((groupChild, groupIndex) => {
-            const groupChildWorldPos = new THREE.Vector3();
-            groupChild.getWorldPosition(groupChildWorldPos);
-            const groupChildDistance =
-              groupChildWorldPos.distanceTo(globeCenter);
-            console.log(
-              `[DISTANCE] Group child ${groupIndex} distance from Globe: ${groupChildDistance.toFixed(
-                4
-              )}`
-            );
-          });
-        }
-      });
-
-      console.log("=== DISTANCE ANALYSIS END ===");
-    }, 100);
-
-    // Debug: Check globe children after adding polygon
-    setTimeout(() => {
-      console.log(
-        `[DEBUG] Globe children count after adding polygon:`,
-        globeRef.current.children.length
-      );
-      console.log(
-        `[DEBUG] Globe final rotation Y:`,
-        globeRef.current.rotation.y
-      );
-      console.log(`[DEBUG] Globe final position:`, globeRef.current.position);
-      console.log(`[DEBUG] Globe final scale:`, globeRef.current.scale);
-
-      globeRef.current.children.forEach((child, index) => {
-        console.log(`[DEBUG] Globe child ${index}:`, {
-          type: child.type,
-          position: child.position,
-          scale: child.scale,
-          userData: child.userData,
-        });
-
-        // If it's a mesh, check its geometry bounds and world position
-        if (child.type === "Mesh" && child.geometry) {
-          child.geometry.computeBoundingSphere();
-          console.log(
-            `[DEBUG] Child ${index} bounding sphere:`,
-            child.geometry.boundingSphere
-          );
-
-          // Calculate world position
-          const worldPosition = new THREE.Vector3();
-          child.getWorldPosition(worldPosition);
-          console.log(`[DEBUG] Child ${index} world position:`, worldPosition);
-        }
-
-        // If it's a group, check its children
-        if (child.type === "Group" && child.children.length > 0) {
-          console.log(
-            `[DEBUG] Group ${index} has ${child.children.length} children`
-          );
-          child.children.forEach((groupChild, groupIndex) => {
-            const worldPosition = new THREE.Vector3();
-            groupChild.getWorldPosition(worldPosition);
-            console.log(`[DEBUG] Group child ${groupIndex}:`, {
-              type: groupChild.type,
-              localPosition: groupChild.position,
-              worldPosition: worldPosition,
-              material: groupChild.material?.map ? "Has texture" : "No texture",
-              materialType: groupChild.material?.constructor.name,
-              hasUserData: !!groupChild.userData,
-              userDataKeys: Object.keys(groupChild.userData || {}),
-              visible: groupChild.visible,
-            });
-
-            // Check if this mesh should have our flag texture
-            if (groupChild.material && groupChild.material.map) {
-              console.log(
-                `[DEBUG] Found mesh with texture:`,
-                groupChild.material.map
-              );
-            }
-          });
-        }
-      });
-    }, 100);
 
     // Force a scene update
     if (sceneRef.current) {
@@ -1152,23 +923,8 @@ export function useThreeJS(containerRef) {
 
     // Make sure we're still in auto-animation mode, unless force flag is true
     if (!forceAnimate && !isAutoAnimatingRef.current) {
-      console.log(
-        "[Auto-Animation] Checking auto-animation ref state:",
-        isAutoAnimatingRef.current
-      );
-      console.log(
-        "[Auto-Animation] Auto-animation stopped (ref check), aborting sequence"
-      );
       return;
     }
-
-    console.log(
-      `[Auto-Animation] State check passed. isAutoAnimating (ref): ${isAutoAnimatingRef.current}, forceAnimate: ${forceAnimate}`
-    );
-
-    console.log(
-      `[Auto-Animation] Auto-animation state confirmed: ${state.animation.isAutoAnimating}`
-    );
 
     const country = topCountries[countryIndex];
     console.log(
@@ -1177,7 +933,7 @@ export function useThreeJS(containerRef) {
       }: ${country.name}`
     );
 
-    logCameraPosition(`Start of animateToCountry for ${country.name}`);
+    // logCameraPosition(`Start of animateToCountry for ${country.name}`);
 
     if (!geojsonCountriesData) {
       console.warn("[Auto-Animation] GeoJSON data not loaded yet");
@@ -1219,19 +975,14 @@ export function useThreeJS(containerRef) {
     console.log(`[Auto-Animation] Highlighting country: ${country.name}`);
 
     // Log current camera position before animation
-    logCameraPosition(`Before animating to ${country.name}`);
+    // logCameraPosition(`Before animating to ${country.name}`);
 
     highlightCountry(country.code, country.name);
 
     // Calculate country centroid using our improved function
-    console.log(`[Auto-Animation] Calculating centroid for: ${country.name}`);
     const centroid = calculateCountryCentroid(countryPolygon);
 
     if (!centroid || (centroid.lat === 0 && centroid.lng === 0)) {
-      console.warn(
-        "Could not calculate valid centroid for country:",
-        country.name
-      );
       // Skip to next country on error
       setTimeout(() => {
         if (state.animation.isAutoAnimating) {
@@ -1262,23 +1013,11 @@ export function useThreeJS(containerRef) {
         ? coordsResult
         : new THREE.Vector3(coordsResult.x, coordsResult.y, coordsResult.z);
 
-    console.log(
-      `[Auto-Animation] Three-globe target position for ${country.name}:`,
-      targetPosition
-    );
-
     // Calculate final camera position based on direction from origin to target
     const targetDirection = targetPosition.clone().normalize();
     const cameraPosition = targetDirection
       .clone()
       .multiplyScalar(COUNTRY_VIEW_ZOOM_DISTANCE);
-
-    console.log(
-      `[Auto-Animation] Calculated camera position distance: ${cameraPosition
-        .length()
-        .toFixed(2)} (should be ${COUNTRY_VIEW_ZOOM_DISTANCE})`
-    );
-    console.log(`[Auto-Animation] Animating camera to ${country.name}`);
 
     // Reset border animation trigger state for new animation
     resetBorderAnimationTrigger();
@@ -1286,19 +1025,11 @@ export function useThreeJS(containerRef) {
     // Animate camera to country with improved multi-phase movement
     animateCameraToPosition(cameraPosition, targetPosition, () => {
       const currentCameraDistance = cameraRef.current?.position.length() || 0;
-      console.log(
-        `[Auto-Animation] Camera animation complete for ${
-          country.name
-        }, camera distance: ${currentCameraDistance.toFixed(2)}`
-      );
-      console.log(
-        `[Auto-Animation] Current auto-animation state during callback: ${state.animation.isAutoAnimating}`
-      );
 
       // Phase 1: Border animation (starts immediately after camera animation)
       setTimeout(() => {
         console.log(
-          `[Auto-Animation] Triggering border animation for ${country.name} (${state.animation.borderAnimationTime}ms duration)`
+          `Triggering border animation for ${country.name} (${state.animation.borderAnimationTime}ms duration)`
         );
 
         // Trigger border animation here
@@ -1307,7 +1038,7 @@ export function useThreeJS(containerRef) {
         // Phase 2: Flag animation (starts after border animation)
         setTimeout(() => {
           console.log(
-            `[Auto-Animation] Triggering flag display for ${country.name} (after ${state.animation.borderAnimationTime}ms border animation)`
+            `Triggering flag display for ${country.name} (after ${state.animation.borderAnimationTime}ms border animation)`
           );
 
           // Find the target country for flag display
@@ -1323,20 +1054,18 @@ export function useThreeJS(containerRef) {
           // Phase 3: Wait before moving to next country
           setTimeout(() => {
             console.log(
-              `[Auto-Animation] Wait period complete for ${country.name} (${state.animation.afterFlagAnimationWaitFor}ms), moving to next country`
+              `Wait period complete for ${country.name} (${state.animation.afterFlagAnimationWaitFor}ms), moving to next country`
             );
 
             // Re-check the ref state at the time of execution
             if (isAutoAnimatingRef.current) {
-              logCameraPosition("Before moving to next country");
-              console.log(
-                `[Auto-Animation] Moving to next country after ${country.name}`
-              );
+              // logCameraPosition("Before moving to next country");
+              console.log(`Moving to next country after ${country.name}`);
               dispatch(actions.nextCountry());
               animateToCountry(countryIndex + 1, callback);
             } else {
               console.log(
-                `[Auto-Animation] Auto-animation stopped (ref check), not proceeding to next country`
+                `Auto-animation stopped (ref check), not proceeding to next country`
               );
             }
           }, state.animation.afterFlagAnimationWaitFor);
@@ -1354,9 +1083,6 @@ export function useThreeJS(containerRef) {
 
     // Prevent double animations by checking if one is already in progress
     if (isCameraAnimatingRef.current) {
-      console.log(
-        "[Camera Animation] Blocking duplicate animation - one already in progress"
-      );
       return;
     }
 
@@ -1364,10 +1090,6 @@ export function useThreeJS(containerRef) {
     isCameraAnimatingRef.current = true;
     const animationId = Date.now() + Math.random();
     currentAnimationIdRef.current = animationId;
-
-    console.log(
-      `[Camera Animation] Starting simple zoom animation ${animationId}`
-    );
 
     const camera = cameraRef.current;
     const controls = controlsRef.current;
@@ -1383,7 +1105,7 @@ export function useThreeJS(containerRef) {
     const startTarget = controls.target.clone();
     const startDistance = startPosition.length();
 
-    logCameraPosition("Simple animation start");
+    // logCameraPosition("Simple animation start");
 
     // Final target position and distance
     const finalDirection = cameraPosition.clone().normalize();
@@ -1393,14 +1115,6 @@ export function useThreeJS(containerRef) {
     const zoomOutDistance = Math.max(
       state.COUNTRY_TO_COUNTRY_ZOOM_DISTANCE,
       startDistance + 50
-    );
-
-    console.log(
-      `[Camera Animation] Simple zoom: start=${startDistance.toFixed(
-        2
-      )} -> zoom out=${zoomOutDistance.toFixed(
-        2
-      )} -> final=${finalDistance.toFixed(2)}`
     );
 
     // Animation phases with durations
@@ -1417,9 +1131,6 @@ export function useThreeJS(containerRef) {
     const animateFrame = () => {
       // Check if this animation is still valid
       if (currentAnimationIdRef.current !== animationId) {
-        console.log(
-          `[Camera Animation] Animation ${animationId} superseded, stopping`
-        );
         return;
       }
 
@@ -1442,12 +1153,6 @@ export function useThreeJS(containerRef) {
         );
         currentDirection = startDirection;
         currentTarget = startTarget.clone();
-
-        console.log(
-          `[Camera Animation] Phase 1 (zoom out): ${(
-            phase1Progress * 100
-          ).toFixed(1)}% - distance: ${currentDistance.toFixed(2)}`
-        );
       } else {
         // Phase 2: Zoom in to target position
         const phase2Progress = (elapsed - ZOOM_OUT_DURATION) / ZOOM_IN_DURATION;
@@ -1480,12 +1185,6 @@ export function useThreeJS(containerRef) {
         // Interpolate target
         currentTarget = startTarget.clone().lerp(lookAtTarget, easedProgress);
 
-        console.log(
-          `[Camera Animation] Phase 2 (zoom in): ${(
-            phase2Progress * 100
-          ).toFixed(1)}% - distance: ${currentDistance.toFixed(2)}`
-        );
-
         // Trigger border animation when getting close to final position
         if (phase2Progress > 0.8) {
           triggerBorderAnimationAtZoomDistance();
@@ -1511,17 +1210,9 @@ export function useThreeJS(containerRef) {
         controls.target.copy(lookAtTarget);
         controls.update();
 
-        // Verify final position
         const actualDistance = camera.position.length();
-        console.log(
-          `[Camera Animation] Final position: actual=${actualDistance.toFixed(
-            2
-          )}, target=${finalDistance.toFixed(2)}`
-        );
-
         // Force position if needed
         if (Math.abs(actualDistance - finalDistance) > 1) {
-          console.log("[Camera Animation] Correcting final position");
           camera.position.copy(finalCameraPosition);
           camera.updateMatrixWorld(true);
         }
@@ -1538,10 +1229,7 @@ export function useThreeJS(containerRef) {
         isCameraAnimatingRef.current = false;
         currentAnimationIdRef.current = null;
 
-        console.log(
-          `[Camera Animation] Simple zoom animation ${animationId} completed`
-        );
-        logCameraPosition("Simple animation end");
+        // logCameraPosition("Simple animation end");
 
         if (callback) callback();
       }
@@ -1551,12 +1239,7 @@ export function useThreeJS(containerRef) {
   };
 
   const startAutoAnimation = () => {
-    console.log("[Auto-Animation] Starting auto-animation sequence");
-    console.log(
-      "[Auto-Animation] Current state before starting:",
-      state.animation.isAutoAnimating
-    );
-
+    console.log(`[Auto-Animation starting.......]`);
     // Set ref to true immediately
     isAutoAnimatingRef.current = true;
 
@@ -1564,19 +1247,13 @@ export function useThreeJS(containerRef) {
 
     // Add a small delay to ensure the state is updated
     setTimeout(() => {
-      console.log(
-        "[Auto-Animation] State after dispatch:",
-        state.animation.isAutoAnimating
-      );
-      console.log("[Auto-Animation] Ref state:", isAutoAnimatingRef.current);
       // Force start the animation regardless of current state
-      console.log("[Auto-Animation] Force initializing first country");
       animateToCountry(0, null, true);
     }, 100);
   };
 
   const stopAutoAnimation = () => {
-    console.log("[Auto-Animation] Stopping auto-animation");
+    console.log("[Auto-Animation stopping......]");
     isAutoAnimatingRef.current = false;
 
     // Clear any ongoing camera animation flags to prevent stuck state
@@ -1616,7 +1293,7 @@ export function useThreeJS(containerRef) {
       ].filter(Boolean); // Remove null/undefined values
 
       const foundMatch = possibleCodes.some((code) => code === countryCode);
-      if (foundMatch) {
+      if (!foundMatch) {
         console.log(`[FIND COUNTRY] Code match found with properties:`, props);
       }
       return foundMatch;
@@ -1728,7 +1405,6 @@ export function useThreeJS(containerRef) {
           f.properties.ADMIN ||
           "unnamed"
       );
-    console.log("[FIND COUNTRY] Sample countries in GeoJSON:", sampleNames);
 
     return null;
   };
@@ -1825,7 +1501,6 @@ const calculateCountryCentroid = (feature) => {
 
   const countryName =
     feature.properties?.name || feature.properties?.NAME || "Unknown";
-  console.log(`[Centroid] Calculating polylabel centroid for: ${countryName}`);
 
   try {
     let targetPolygon = null;
@@ -1833,12 +1508,7 @@ const calculateCountryCentroid = (feature) => {
     if (feature.geometry.type === "Polygon") {
       // For simple polygon, use the outer ring
       targetPolygon = feature.geometry.coordinates[0];
-      console.log(`[Centroid] Processing simple Polygon for ${countryName}`);
     } else if (feature.geometry.type === "MultiPolygon") {
-      console.log(
-        `[Centroid] Processing MultiPolygon for ${countryName} with ${feature.geometry.coordinates.length} polygons`
-      );
-
       // For MultiPolygon, find the largest polygon by bounding box area (matches reference implementation)
       let maxArea = 0;
       let largestPolygon = null;
@@ -1869,19 +1539,10 @@ const calculateCountryCentroid = (feature) => {
 
         const area = (maxX - minX) * (maxY - minY);
 
-        console.log(
-          `[Centroid] Polygon ${index}: bounding box area=${area.toFixed(4)}`
-        );
-
         if (area > maxArea) {
           maxArea = area;
           largestPolygon = coords;
           polygonIndex = index;
-          console.log(
-            `[Centroid] New largest polygon ${index} for ${countryName} with area ${area.toFixed(
-              4
-            )}`
-          );
         }
       });
 
@@ -1893,19 +1554,10 @@ const calculateCountryCentroid = (feature) => {
       return { lat: 0, lng: 0 };
     }
 
-    console.log(
-      `[Centroid] Using polygon with ${targetPolygon.length} points for ${countryName}`
-    );
-
     // Use polylabel to find the pole of inaccessibility (visual center)
     const centroidPoint = polylabel([targetPolygon], 1.0);
     const [lng, lat] = centroidPoint;
 
-    console.log(
-      `[Centroid] Polylabel centroid for ${countryName}: lat=${lat.toFixed(
-        4
-      )}, lng=${lng.toFixed(4)}`
-    );
     return { lat, lng };
   } catch (error) {
     console.error(
