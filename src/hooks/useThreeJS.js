@@ -193,11 +193,8 @@ export function useThreeJS(containerRef) {
     globe.polygonsData([]);
     // Use the geometry property of the GeoJSON feature directly
     globe.polygonGeoJsonGeometry((d) => d.geometry);
-    // Set the altitude for the polygons
-    // globe.polygonAltitude(0.01);
-    globe.polygonCapColor(() => "#ffffff"); // Default cap color
-    globe.polygonSideColor(() => "rgba(255,255,255,0.2)");
-    globe.polygonStrokeColor(() => "rgba(255,255,255,0.3)");
+
+    // Initial setup - will be overridden when data loads
     globe.polygonsTransitionDuration(0); // Disable transitions for immediate rendering
 
     // Setup polygon materials using accessor functions that check for texture
@@ -227,19 +224,7 @@ export function useThreeJS(containerRef) {
       return undefined;
     });
 
-    globe.polygonSideColor(() => "rgba(255,255,255,0.2)");
-    globe.polygonStrokeColor(() => "rgba(255,255,255,0.3)");
-
-    // Enable polygon caps explicitly and ensure they're visible
-    globe.polygonCapColor(() => "#ffffff"); // Set a visible cap color as fallback
-    globe.polygonsTransitionDuration(0); // Disable transitions for immediate rendering
-
-    // Use an accessor function for altitude to ensure it's applied per polygon
-    globe.polygonAltitude((d) => {
-      console.log(`[DEBUG] Initial polygon altitude setup for country data`);
-      // Use small altitude values since globe has radius 100 by default
-      return 0.0005; // 0.01 initially  Small positive altitude to ensure visibility above surface
-    });
+    // Remove duplicate configurations - use only the settings above
 
     // Position the globe at center - no scaling needed since this IS our earth
     globe.position.set(0, 0, 0);
@@ -365,11 +350,26 @@ export function useThreeJS(containerRef) {
         }
       );
 
-      // Set the polygon data on the globe
+      console.log({ countryPolygonData });
+      // Set the polygon data on the globe first
       globe.polygonsData(countryPolygonData);
 
+      // CRITICAL: Configure borders for ALL countries after data is loaded
+      globe.polygonAltitude(0.01); // Small altitude to lift borders above surface
+      globe.polygonCapColor(() => "transparent"); // Keep all caps transparent
+      globe.polygonSideColor(() => "rgba(255,255,255,0.1)"); // Subtle side walls
+      globe.polygonStrokeColor((d) => {
+        if (d.isHighlighted && !isCameraMoving) {
+          return "#ffcc00"; // YELLOW borders for highlighted countries
+        }
+        return "#ffffff"; // WHITE borders for ALL countries
+      }); // WHITE borders for ALL countries
+
+      // Force update to ensure settings are applied
+      // globe.polygonsData(countryPolygonData); // Reapply data to trigger updates
+
       console.log(
-        `POLYGONS: Added ${countryPolygonData.length} countries to three-globe`
+        `POLYGONS: Added ${countryPolygonData.length} countries with WHITE borders to three-globe`
       );
     } else {
       console.log("POLYGONS: No GeoJSON data available yet");
