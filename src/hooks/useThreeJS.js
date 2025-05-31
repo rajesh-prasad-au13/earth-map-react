@@ -43,6 +43,10 @@ export function useThreeJS(containerRef) {
   const controlsRef = useRef(null);
   const raycasterRef = useRef(new THREE.Raycaster());
   const mouseRef = useRef(new THREE.Vector2());
+
+  // Refs for border animation
+  const borderAnimationObjects = useRef([]);
+  const borderAnimationFrameId = useRef(null);
   const cloudsMeshRef = useRef(null);
   const activeBorderOutlineRef = useRef(null);
   const centroidMarkerRef = useRef(null); // For centroid visualization
@@ -1293,9 +1297,9 @@ export function useThreeJS(containerRef) {
       ].filter(Boolean); // Remove null/undefined values
 
       const foundMatch = possibleCodes.some((code) => code === countryCode);
-      if (!foundMatch) {
-        console.log(`[FIND COUNTRY] Code match found with properties:`, props);
-      }
+      // if (!foundMatch) {
+      //   console.log(`[FIND COUNTRY] Code match found with properties:`, props);
+      // }
       return foundMatch;
     });
 
@@ -1419,6 +1423,12 @@ export function useThreeJS(containerRef) {
         rendererRef.current.render(sceneRef.current, cameraRef.current);
       }
     }
+
+    // Cleanup function
+    return () => {
+      // Ensure border animations are cleaned up when component unmounts
+      cleanupExistingBorderAnimation();
+    };
   }, [sceneRef.current, rendererRef.current]);
 
   // Reset border animation trigger state for new animations
@@ -1451,18 +1461,171 @@ export function useThreeJS(containerRef) {
       );
 
       // Create animated border outline for the currently highlighted country
-      console.log({ selectedCountry });
-      createAnimatedBorderOutline(selectedCountry);
-      setBorderAnimationTriggered(true);
+      if (selectedCountry) {
+        // Find the country feature in the GeoJSON data
+        const countryCode = selectedCountry.code || selectedCountry.alpha3Code;
+        const countryName = selectedCountry.name;
+
+        // Find the country feature in the GeoJSON data
+        const countryFeature = findCountryByCode(countryCode, countryName);
+
+        if (countryFeature) {
+          createAnimatedBorderOutline(countryFeature);
+          setBorderAnimationTriggered(true);
+        } else {
+          console.warn(
+            `[Border Animation] Could not find GeoJSON feature for ${countryName}`
+          );
+        }
+      } else {
+        console.warn(
+          "[Border Animation] No country selected for border animation"
+        );
+      }
     }
   };
 
-  // Placeholder for createAnimatedBorderOutline function (to be fully implemented later)
+  // Create an animated border outline for the selected country
   const createAnimatedBorderOutline = (countryFeature) => {
-    console.log(
-      `[Border Animation] Would create animated border for: ${countryFeature}`
-    );
-    // TODO: Implement full border animation system in next step
+    if (!countryFeature || !countryFeature.geometry) {
+      console.warn("[Border Animation] Invalid country feature provided");
+      return;
+    }
+
+    try {
+      // Clean up any existing border animation
+      cleanupExistingBorderAnimation();
+
+      // Extract the coordinates from the feature
+      const countryGeometry = countryFeature.geometry;
+      const coordinates = extractAllCoordinates(countryGeometry);
+
+      // Create the line segments for the border
+      const material = new THREE.LineBasicMaterial({
+        color: 0xffffff, // White color
+        linewidth: 3, // Line thickness
+        opacity: 0.8, // Slight transparency
+        transparent: true,
+      });
+
+      // Create animated border for each polygon in the country
+      const borderObjects = [];
+
+      coordinates.forEach((polygonCoords, index) => {
+        // Create a line geometry from the coordinates
+        const points = polygonCoords.map((coord) => {
+          // Convert GeoJSON coordinates to globe coordinates
+          // Note: Three-globe expects coordinates as [lng, lat]
+          return new THREE.Vector3(coord[0], coord[1], 0.02); // Slight elevation
+        });
+
+        if (points.length < 3) return; // Skip invalid polygons
+
+        // Close the loop if needed
+        if (points[0] !== points[points.length - 1]) {
+          points.push(points[0]);
+        }
+
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const line = new THREE.Line(geometry, material);
+
+        // Add to scene as child of the globe
+        if (globeRef.current) {
+          globeRef.current.add(line);
+          borderObjects.push(line);
+        }
+      });
+
+      // Store references to the created objects for later cleanup
+      borderAnimationObjects.current = borderObjects;
+
+      // Create pulsing animation effect
+      animateBorders(borderObjects);
+    } catch (error) {
+      console.error(
+        "[Border Animation] Error creating border animation:",
+        error
+      );
+    }
+  };
+
+  // Helper to extract all coordinate arrays from a GeoJSON geometry
+  const extractAllCoordinates = (geometry) => {
+    const allCoords = [];
+
+    if (geometry.type === "Polygon") {
+      // For a Polygon, use the outer ring (first array of coordinates)
+      allCoords.push(geometry.coordinates[0]);
+    } else if (geometry.type === "MultiPolygon") {
+      // For MultiPolygon, extract the outer ring of each polygon
+      geometry.coordinates.forEach((polygon) => {
+        allCoords.push(polygon[0]); // outer ring of each polygon
+      });
+    }
+
+    return allCoords;
+  };
+
+  // Animate the border objects with a pulsing effect
+  const animateBorders = (borderObjects) => {
+    if (!borderObjects || borderObjects.length === 0) return;
+
+    let pulseDirection = 1;
+    let opacity = 0;
+
+    const animatePulse = () => {
+      // Cancel animation if component unmounted or animation turned off
+      if (!borderAnimationObjects.current) return;
+
+      // Update opacity with pulsing effect
+      opacity += 0.03 * pulseDirection;
+
+      // Reverse direction when reaching limits
+      if (opacity >= 1) {
+        pulseDirection = -1;
+        opacity = 1;
+      } else if (opacity <= 0.2) {
+        pulseDirection = 1;
+        opacity = 0.2;
+      }
+
+      // Apply opacity to all border objects
+      borderObjects.forEach((line) => {
+        if (line && line.material) {
+          line.material.opacity = opacity;
+        }
+      });
+
+      // Request next frame
+      borderAnimationFrameId.current = requestAnimationFrame(animatePulse);
+    };
+
+    // Start animation
+    borderAnimationFrameId.current = requestAnimationFrame(animatePulse);
+  };
+
+  // Clean up any existing border animation
+  const cleanupExistingBorderAnimation = () => {
+    // Cancel animation frame if active
+    if (borderAnimationFrameId.current) {
+      cancelAnimationFrame(borderAnimationFrameId.current);
+      borderAnimationFrameId.current = null;
+    }
+
+    // Remove existing border objects
+    if (
+      borderAnimationObjects.current &&
+      borderAnimationObjects.current.length > 0
+    ) {
+      borderAnimationObjects.current.forEach((obj) => {
+        if (obj && globeRef.current) {
+          globeRef.current.remove(obj);
+          if (obj.geometry) obj.geometry.dispose();
+          if (obj.material) obj.material.dispose();
+        }
+      });
+      borderAnimationObjects.current = [];
+    }
   };
 
   // Debug function to monitor camera position
