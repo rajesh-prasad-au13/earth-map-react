@@ -323,7 +323,7 @@ export function useThreeJS(containerRef) {
         .polygonsData(allCountryPolygons)
         .polygonGeoJsonGeometry((d) => d.geometry)
         .polygonCapColor((d) => {
-          return "rgba(200, 200, 200, 0.1)";
+          return "rgba(235, 8, 8, 0.88)";
         })
         .polygonSideColor((d) => {
           return "rgba(200, 200, 200, 0.05)";
@@ -338,16 +338,16 @@ export function useThreeJS(containerRef) {
           }
           return state.countries.allcountries_border_color; // Use the global border color for all countries
         })
-        // .polygonAltitude((d) => {
-        //   if (d.isHighlighted && !isCameraMoving) {
-        //     if (state.countries.glowIntensity) {
-        //       return 0.025 * state.countries.glowIntensity;
-        //     } else {
-        //       return 0.02;
-        //     }
-        //   }
-        //   return 0.01;
-        // })
+        .polygonAltitude((d) => {
+          // if (d.isHighlighted && !isCameraMoving) {
+          //   if (state.countries.glowIntensity) {
+          //     return 0.025 * state.countries.glowIntensity;
+          //   } else {
+          //     return 0.02;
+          //   }
+          // }
+          return 0.01;
+        })
         .polygonCapMaterial((d) => {
           if (
             d.isHighlighted &&
@@ -457,29 +457,27 @@ export function useThreeJS(containerRef) {
     // Update polygon styling
     globeRef.current
 
-      .polygonCapColor((d) => {
-        return "rgba(200, 200, 200, 0.1)";
-      })
-      .polygonSideColor((d) => {
-        return "rgba(234, 5, 5, 0.84)";
-      })
-      .polygonStrokeColor((d) => {
-        if (d.isHighlighted) {
-          return "rgb(224, 227, 25)";
-        }
-        return "rgb(9, 246, 56)";
-      })
-      // .polygonAltitude((d) => {
-      //   if (d.isHighlighted && !isCameraMoving) {
-      //     if (enableGlow) {
-      //       // Slightly more elevated when glowing
-      //       return 0.025 * glowIntensity;
-      //     } else {
-      //       return 0.02;
-      //     }
+      // .polygonCapColor((d) => {
+      //   return "rgba(200, 200, 200, 0.1)";
+      // })
+      // .polygonSideColor((d) => {
+      //   return "rgba(234, 5, 5, 0.84)";
+      // })
+      // .polygonStrokeColor((d) => {
+      //   if (d.isHighlighted) {
+      //     return "rgb(224, 227, 25)";
       //   }
-      //   return 0.1;
-      // });
+      //   return "rgb(9, 246, 56)";
+      // })
+      .polygonAltitude((d) => {
+        if (d.isHighlighted && !isCameraMoving) {
+            return 0.02;
+        }
+        return 0.01;
+      })
+       .polygonSideColor((d) => {
+        return "rgba(0, 0, 0, 0.92)";
+      })
   }
 
   // --- Country Highlighting Functions ---
