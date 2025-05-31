@@ -348,7 +348,7 @@ export function useThreeJS(containerRef) {
               return 0.02;
             }
           }
-          return 0.001;
+          return 0.01;
         })
         .polygonCapMaterial((d) => {
           if (
@@ -806,7 +806,7 @@ export function useThreeJS(containerRef) {
     globeRef.current.polygonAltitude((d) => {
       // Use small altitude values since we're using globe's natural coordinate system
       // return 0.01; // Small positive altitude above the globe surface
-      return 0.005; // 0.01 initially-  Small positive altitude above the globe surface
+      return 0.01; // 0.001 initially-  Small positive altitude above the globe surface
     });
 
     // Instead of updating all polygons, find and update just this specific country's data
