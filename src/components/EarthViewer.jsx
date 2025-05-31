@@ -1,9 +1,9 @@
 import { useRef, useState } from "react";
 import { useThreeJS } from "../hooks/useThreeJS";
-import SettingsPanel from "./SettingsPanel";
-import RecordingControls from "./RecordingControls";
-import IntroScreen from "./IntroScreen";
-import { useAppContext, actions } from "../context/AppContext";
+import SettingsPanel from "./SettingsPanel.jsx";
+import RecordingControls from "./RecordingControls.jsx";
+import IntroScreen from "./IntroScreen.jsx";
+import { useAppContext, actions } from "../context/AppContext.jsx";
 
 export default function EarthViewer() {
   const [showIntro, setShowIntro] = useState(true);

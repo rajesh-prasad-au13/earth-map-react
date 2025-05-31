@@ -1,5 +1,5 @@
-import { AppProvider } from "./context/AppContext";
-import EarthViewer from "./components/EarthViewer";
+import { AppProvider } from "./context/AppContext.jsx";
+import EarthViewer from "./components/EarthViewer.jsx";
 import "./App.css"; // Re-enable this import
 
 export default function App() {
