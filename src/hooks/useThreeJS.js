@@ -721,18 +721,11 @@ export function useThreeJS(containerRef) {
       return;
     }
 
-    console.log(`[Flag Display] Starting flag display for: ${countryName}`);
-    console.log(`[Flag Display] Country feature:`, countryFeature);
-
     // Generate a clean country name for the flag file
     const countryNameStr = String(countryName);
     const cleanCountryName = countryNameStr.replace(/\s+/g, " ").trim();
 
     const flagPath = `/flags/${cleanCountryName}.png`;
-    console.log(`[Flag Display] Raw country name: "${countryName}"`);
-    console.log(`[Flag Display] Clean country name: "${cleanCountryName}"`);
-    console.log(`[Flag Display] Flag path: "${flagPath}"`);
-    console.log(`[Flag Display] showFlags setting:`, state.countries.showFlags);
 
     // Clear any existing flag loading timeout
     if (flagLoadingTimeoutRef.current) {
@@ -742,7 +735,7 @@ export function useThreeJS(containerRef) {
 
     // Set a loading timeout so we don't wait forever
     flagLoadingTimeoutRef.current = setTimeout(() => {
-      console.warn(`[Flag Display] Flag loading timed out for ${countryName}`);
+      console.warn(`Flag loading timed out for ${countryName}`);
       createFlagFilledCountry(countryFeature, null, countryName);
     }, 3000);
 
@@ -759,9 +752,7 @@ export function useThreeJS(containerRef) {
         texture.wrapS = THREE.ClampToEdgeWrapping;
         texture.wrapT = THREE.ClampToEdgeWrapping;
 
-        console.log(
-          `[Flag Display] Flag texture loaded successfully for ${countryName}`
-        );
+        console.log(`Flag texture loaded successfully for ${countryName}`);
 
         // Create flag-filled country
         createFlagFilledCountry(countryFeature, texture, countryName);
@@ -770,13 +761,8 @@ export function useThreeJS(containerRef) {
       (error) => {
         clearTimeout(flagLoadingTimeoutRef.current);
         flagLoadingTimeoutRef.current = null;
-        console.error(
-          `[Flag Display] Could not load flag texture for ${countryName}:`
-        );
-        console.error(`[Flag Display] Flag path attempted: ${flagPath}`);
-        console.error(`[Flag Display] Error details:`, error);
-        console.error(`[Flag Display] Error message:`, error.message);
-        console.error(`[Flag Display] Error status:`, error.status);
+        console.error(`Could not load flag texture for ${countryName}:`, error);
+        console.error(`Flag path attempted: ${flagPath}`);
 
         // Still create highlight even without flag
         createFlagFilledCountry(countryFeature, null, countryName);
@@ -789,31 +775,10 @@ export function useThreeJS(containerRef) {
     flagTexture,
     countryName
   ) => {
-    console.log(`[Flag Filled Country] Starting creation for: ${countryName}`);
-    console.log(`[Flag Filled Country] Has flag texture:`, !!flagTexture);
-    console.log(
-      `[Flag Filled Country] Camera currently animating:`,
-      isCameraAnimatingRef.current
-    );
-    console.log(
-      `[Flag Filled Country] Current animation ID:`,
-      currentAnimationIdRef.current
-    );
-    console.log(
-      `[Flag Filled Country] Country feature geometry type:`,
-      countryFeature?.geometry?.type
-    );
-
     if (!countryFeature || !countryFeature.geometry || !globeRef.current) {
-      console.warn(
-        "[Flag Filled Country] Missing country feature or globe instance"
-      );
+      console.warn("Missing country feature or globe instance");
       return;
     }
-
-    console.log(
-      `[Flag Filled Country] Creating flag-filled country for: ${countryName}`
-    );
 
     // Create a polygon data object for three-globe
     // Using standard GeoJSON format that three-globe can understand
@@ -826,15 +791,6 @@ export function useThreeJS(containerRef) {
       centroid: calculateCountryCentroid(countryFeature),
     };
 
-    console.log(
-      `[Flag Filled Country] Created polygon data with texture:`,
-      !!flagTexture
-    );
-    console.log(
-      `[Flag Filled Country] Country centroid:`,
-      polygonData.centroid
-    );
-
     // Use an accessor function for altitude to ensure it's applied per polygon
     globeRef.current.polygonAltitude((d) => {
       // Use small altitude values since we're using globe's natural coordinate system
@@ -842,34 +798,40 @@ export function useThreeJS(containerRef) {
       return 0.005; // 0.01 initially-  Small positive altitude above the globe surface
     });
 
-    // Instead of clearing all polygons and showing only one,
-    // update all countries with the highlighting information
-    if (geojsonCountriesData) {
-      const allCountryPolygons = geojsonCountriesData.features.map(
-        (feature) => {
-          const topCountry = topCountries.find(
-            (c) => c.code === feature.properties.ISO_A3
-          );
+    // Instead of updating all polygons, find and update just this specific country's data
+    if (geojsonCountriesData && globeRef.current) {
+      const currentPolygonData = globeRef.current.polygonsData();
 
-          const isCurrentCountry =
-            feature.properties.ADMIN === countryName ||
-            feature.properties.NAME === countryName ||
-            feature.properties.ISO_A3 === polygonData.countryCode;
+      // Find the specific country polygon to update
+      const updatedPolygonData = currentPolygonData.map((polygon) => {
+        const isCurrentCountry =
+          polygon.properties?.ADMIN === countryName ||
+          polygon.properties?.NAME === countryName ||
+          polygon.properties?.ISO_A3 === polygonData.countryCode ||
+          polygon.countryName === countryName;
 
+        if (isCurrentCountry) {
+          // Update only this country's data
           return {
-            ...feature,
-            countryName: feature.properties.ADMIN || feature.properties.NAME,
-            countryCode: feature.properties.ISO_A3,
-            isTopCountry: !!topCountry,
-            isHighlighted: isCurrentCountry,
-            flagTexture: isCurrentCountry ? flagTexture : null,
-            centroid: isCurrentCountry ? polygonData.centroid : null,
+            ...polygon,
+            isHighlighted: true,
+            flagTexture: flagTexture,
+            centroid: polygonData.centroid,
           };
         }
+
+        // Return other countries unchanged
+        return polygon;
+      });
+
+      // Only update if we actually found and modified the country
+      const hasChanges = updatedPolygonData.some(
+        (polygon, index) => polygon !== currentPolygonData[index]
       );
 
-      // Update the globe with all countries, but with highlighting
-      globeRef.current.polygonsData(allCountryPolygons);
+      if (hasChanges) {
+        globeRef.current.polygonsData(updatedPolygonData);
+      }
     }
 
     // Force a scene update
@@ -879,28 +841,13 @@ export function useThreeJS(containerRef) {
 
     // Force a material update by resetting the accessor (will use the one we defined at initialization)
     if (flagTexture) {
-      console.log(
-        `[Flag Filled Country] Flag texture is available for ${countryName}`
-      );
-
       // Make sure the texture is properly configured
       flagTexture.needsUpdate = true;
       flagTexture.minFilter = THREE.LinearFilter;
       flagTexture.magFilter = THREE.LinearFilter;
-
-      // Log that we're using the accessor function that references polygon.flagTexture
-      console.log(
-        `[Flag Filled Country] Using material accessor for flag texture`
-      );
     } else {
-      console.log(
-        `[Flag Filled Country] Using fallback color for ${countryName}`
-      );
+      // No texture available
     }
-
-    console.log(
-      `[Flag Filled Country] Flag-filled country created for: ${countryName}`
-    );
   };
 
   // --- Auto-Animation Functions ---
